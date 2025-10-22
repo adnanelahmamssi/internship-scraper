@@ -484,6 +484,29 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/offers-test")
+    @login_required
+    def offers_test():
+        """Test endpoint to display existing offers without scraping"""
+        db = get_db_session()
+        try:
+            # Get a few existing offers
+            offers = db.query(Offer).order_by(Offer.created_at.desc()).limit(10).all()
+            
+            return render_template('index.html', 
+                                 offers=offers, 
+                                 page=1, 
+                                 total_pages=1,
+                                 cities=[],
+                                 countries=[],
+                                 show_all_offers=True)
+        except Exception as e:
+            logger.error(f"Offers test error: {e}")
+            flash("Error loading offers", "error")
+            return redirect(url_for('index'))
+        finally:
+            db.close()
+
     @app.route("/test-db")
     def test_db():
         """Test route to check database connectivity and data"""
@@ -532,6 +555,59 @@ def create_app() -> Flask:
                 "error": str(e),
                 "message": "Scraping failed. Check logs for details."
             }), 500
+
+    @app.route("/scheduler-test")
+    @login_required
+    def scheduler_test():
+        """Test endpoint to check scheduler status"""
+        try:
+            from scheduler import get_next_run_times
+            next_runs = get_next_run_times(scheduler)
+            
+            # Convert datetime objects to strings for JSON
+            next_runs_str = {}
+            for job_id, next_run_time in next_runs.items():
+                next_runs_str[job_id] = next_run_time.isoformat() if next_run_time else None
+            
+            return jsonify({
+                "scheduler_status": "running",
+                "next_runs": next_runs_str,
+                "message": "Scheduler is working correctly"
+            })
+        except Exception as e:
+            logger.error(f"Scheduler test error: {e}")
+            return jsonify({
+                "scheduler_status": "error",
+                "error": str(e),
+                "message": "Scheduler has issues"
+            }), 500
+
+    @app.route("/health")
+    def health_check():
+        """Simple health check to verify database connectivity"""
+        db = get_db_session()
+        try:
+            # Count offers
+            offer_count = db.query(Offer).count()
+            # Count users
+            user_count = db.query(User).count()
+            
+            return jsonify({
+                "status": "healthy",
+                "database": "connected",
+                "offers": offer_count,
+                "users": user_count,
+                "message": "Application is running correctly"
+            })
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
+            return jsonify({
+                "status": "unhealthy",
+                "error": str(e),
+                "message": "Database connection failed"
+            }), 500
+        finally:
+            db.close()
 
     # Make sure we return the app
     return app
