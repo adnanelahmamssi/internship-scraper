@@ -5,6 +5,7 @@ from datetime import datetime, date
 import re
 import sys
 import os
+import random
 
 import requests
 from bs4 import BeautifulSoup
@@ -25,11 +26,16 @@ except ImportError:
     print("webdriver-manager not available, will try direct Chrome driver")
 
 
+# More sophisticated headers to avoid bot detection
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+]
+
 DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
@@ -40,6 +46,8 @@ DEFAULT_HEADERS = {
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "none",
     "Cache-Control": "max-age=0",
+    "Pragma": "no-cache",
+    "TE": "Trailers"
 }
 
 
@@ -425,57 +433,143 @@ def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str =
     return offers
 
 
-def scrape_indeed_requests(max_pages: int = 20, delay_seconds: float = 2.0, country: str = "Maroc") -> List[Dict[str, str]]:
+def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Fallback scraping method using requests
+    Fallback scraping method using requests with enhanced anti-bot avoidance
     """
     offers: List[Dict[str, str]] = []
     session = requests.Session()
-    session.headers.update(DEFAULT_HEADERS)
+    
+    # Use rotating user agents
+    headers = DEFAULT_HEADERS.copy()
+    headers["User-Agent"] = random.choice(USER_AGENTS)
+    session.headers.update(headers)
 
     for page in range(max_pages):
         start = page * 10
         url = build_indeed_url(start=start, country=country)
         print(f"Scraping page {page + 1}: {url}")
         
-        time.sleep(delay_seconds + (page * 0.5))
+        # Initialize variables for retry loop
+        resp = None
+        attempt = 0
         
-        try:
-            # Add more robust headers to avoid bot detection
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Accept-Encoding": "gzip, deflate, br",
-                "DNT": "1",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none",
-                "Cache-Control": "max-age=0",
-            }
-            session.headers.update(headers)
-            
-            resp = session.get(url, timeout=30, allow_redirects=True)
-            print(f"HTTP {resp.status_code} for {url}")
-            
-            # Check if we're being blocked by anti-bot protection
-            if resp.status_code == 403:
-                print("Blocked by anti-bot protection. Consider using a proxy or reducing request frequency.")
-                # Try to get content anyway in case it's a soft block
-                if "captcha" in resp.text.lower() or "blocked" in resp.text.lower():
-                    print("CAPTCHA or blocking detected. Stopping requests.")
-                    break
+        # Increase delay and add some randomness
+        delay = delay_seconds + random.uniform(1.0, 3.0) + (page * 0.5)
+        print(f"Waiting {delay:.2f} seconds before request...")
+        time.sleep(delay)
+        
+        # Try multiple times with exponential backoff
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Rotate user agent for each attempt
+                headers = DEFAULT_HEADERS.copy()
+                headers["User-Agent"] = random.choice(USER_AGENTS)
+                session.headers.update(headers)
                 
-            if resp.status_code != 200:
-                print(f"Failed to fetch page {page + 1}")
+                resp = session.get(url, timeout=30, allow_redirects=True)
+                print(f"HTTP {resp.status_code} for {url}")
+                
+                # Check if we're being blocked by anti-bot protection
+                if resp.status_code == 403 or resp.status_code == 429:
+                    print(f"Blocked by anti-bot protection (status {resp.status_code}).")
+                    if "captcha" in resp.text.lower() or "blocked" in resp.text.lower() or "robot" in resp.text.lower():
+                        print("CAPTCHA or blocking detected.")
+                        if attempt < max_retries - 1:
+                            # Exponential backoff
+                            backoff_time = (2 ** attempt) * 5
+                            print(f"Retrying in {backoff_time} seconds...")
+                            time.sleep(backoff_time)
+                            continue
+                        else:
+                            print("Max retries reached. Stopping requests.")
+                            return offers
+                
+                if resp.status_code == 429:  # Too many requests
+                    if attempt < max_retries - 1:
+                        backoff_time = (2 ** attempt) * 10
+                        print(f"Rate limited. Retrying in {backoff_time} seconds...")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        print("Rate limited and max retries reached.")
+                        return offers
+                        
+                if resp.status_code != 200:
+                    print(f"Failed to fetch page {page + 1} (status {resp.status_code})")
+                    if attempt < max_retries - 1:
+                        backoff_time = (2 ** attempt) * 3
+                        print(f"Retrying in {backoff_time} seconds...")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        break
+                        
+                # Check if we got a valid response
+                if len(resp.text) < 1000:  # Suspiciously short response
+                    print("Received suspiciously short response, might be blocked")
+                    if attempt < max_retries - 1:
+                        backoff_time = (2 ** attempt) * 5
+                        print(f"Retrying in {backoff_time} seconds...")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        break
+                
+                # Parse the response
+                soup = BeautifulSoup(resp.text, "html.parser")
+                
+                # Check if we got a valid Indeed page
+                if not soup.select("div.job_seen_beacon") and not soup.select(".resultContent"):
+                    print("No job cards found in response, might be blocked or redirected")
+                    if attempt < max_retries - 1:
+                        backoff_time = (2 ** attempt) * 5
+                        print(f"Retrying in {backoff_time} seconds...")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        break
+                
+                break  # Success, break out of retry loop
+                
+            except requests.exceptions.RequestException as e:
+                print(f"Request error on attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    backoff_time = (2 ** attempt) * 3
+                    print(f"Retrying in {backoff_time} seconds...")
+                    time.sleep(backoff_time)
+                    continue
+                else:
+                    print("Max retries reached due to request errors.")
+                    return offers
+            except Exception as e:
+                print(f"Unexpected error on attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    backoff_time = (2 ** attempt) * 3
+                    print(f"Retrying in {backoff_time} seconds...")
+                    time.sleep(backoff_time)
+                    continue
+                else:
+                    print("Max retries reached due to unexpected errors.")
+                    return offers
+        
+        # If we failed all retries, stop scraping
+        if attempt == max_retries - 1:
+            # Check if we have a response to evaluate
+            if resp is not None and (resp.status_code != 200 or len(resp.text) < 1000):
+                print("Failed to get valid response after all retries. Stopping scraping.")
                 break
-                
-        except Exception as e:
-            print(f"Error fetching page {page + 1}: {e}")
-            break
+            elif resp is None:
+                print("Failed to get any response after all retries. Stopping scraping.")
+                break
             
+        # If we don't have a valid response, skip parsing
+        if resp is None or resp.status_code != 200:
+            print(f"Skipping page {page + 1} due to failed request")
+            continue
+            
+        # Parse the successful response
         soup = BeautifulSoup(resp.text, "html.parser")
 
         # Try multiple selectors for job cards
@@ -491,13 +585,47 @@ def scrape_indeed_requests(max_pages: int = 20, delay_seconds: float = 2.0, coun
             
         print(f"Found {len(cards)} job cards on page {page + 1}")
 
+        page_offers = 0
         for card in cards:
             data = parse_job_card(card)
             if data.get("link") and data.get("title"):
                 offers.append(data)
-                print(f"Added: {data['title'][:50]}...")
+                page_offers += 1
+                if len(offers) <= 5:  # Only print first 5 offers
+                    print(f"Added: {data['title'][:50]}...")
 
-        time.sleep(delay_seconds)
+        print(f"Page {page + 1}: {page_offers} offers added")
+        
+        # If no offers found on this page, try a few more pages before stopping
+        if page_offers == 0 and page >= 2:
+            print(f"No offers found on page {page + 1}, stopping...")
+            break
+
+        # Add delay between pages
+        if page < max_pages - 1:
+            page_delay = delay_seconds + random.uniform(2.0, 5.0)
+            print(f"Waiting {page_delay:.2f} seconds before next page...")
+            time.sleep(page_delay)
 
     print(f"Total offers scraped: {len(offers)}")
+    
+    # If we got no offers, provide guidance
+    if len(offers) == 0:
+        print("\n" + "="*50)
+        print("NO OFFERS FOUND - RECOMMENDATIONS:")
+        print("1. Indeed may be blocking requests from cloud IPs")
+        print("2. Consider using a proxy service")
+        print("3. Try scraping at a different time of day")
+        print("4. The website structure may have changed")
+        print("="*50)
+    
     return offers
+
+
+if __name__ == "__main__":
+    # Simple test function
+    print("Testing Indeed scraper...")
+    offers = scrape_indeed(max_pages=1, country="Maroc")
+    print(f"Found {len(offers)} offers")
+    for i, offer in enumerate(offers[:3]):  # Show first 3 offers
+        print(f"{i+1}. {offer['title']} at {offer['company']} in {offer['location']}")

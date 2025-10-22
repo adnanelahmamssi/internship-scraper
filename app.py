@@ -517,11 +517,21 @@ def create_app() -> Flask:
     def test_scrape():
         """Test route to manually trigger scraping"""
         try:
+            # Use very conservative settings for testing
             inserted = run_scrape_job(max_pages=1, country="Maroc")
-            return jsonify({"inserted": inserted})
+            return jsonify({
+                "inserted": inserted,
+                "message": f"Successfully scraped and inserted {inserted} offers",
+                "note": "Check logs for detailed scraping information"
+            })
         except Exception as e:
             logger.error(f"Scraping test error: {e}")
-            return jsonify({"error": str(e)}), 500
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "error": str(e),
+                "message": "Scraping failed. Check logs for details."
+            }), 500
 
     # Make sure we return the app
     return app
