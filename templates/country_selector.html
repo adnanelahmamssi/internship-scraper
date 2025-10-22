@@ -35,7 +35,7 @@
       Chargement...
     </div>
     <div class="timer-info">
-      Les offres sont mises à jour automatiquement toutes les heures
+      Les offres sont mises à jour automatiquement toutes les 15 minutes
     </div>
   </div>
 
@@ -67,16 +67,37 @@
       fetch('/timer-info')
         .then(response => response.json())
         .then(data => {
+          // Debugging: log the data received
+          console.log('Timer info data:', data);
+          
           const nextRuns = data.next_runs;
-          // Get the earliest next run time
+          
+          // Check if we have any valid next run times
+          let hasValidNextRuns = false;
           let earliestTime = null;
+          
           for (const jobId in nextRuns) {
             if (nextRuns[jobId]) {
+              hasValidNextRuns = true;
               const jobTime = new Date(nextRuns[jobId]);
               if (!earliestTime || jobTime < earliestTime) {
                 earliestTime = jobTime;
               }
             }
+          }
+
+          // If we don't have valid next run times, show a default message
+          if (!hasValidNextRuns) {
+            document.getElementById('nextUpdateTime').textContent = "Prochaine mise à jour: bientôt";
+            // Reset the updating state
+            if (isUpdating) {
+              isUpdating = false;
+              if (updateCheckInterval) {
+                clearInterval(updateCheckInterval);
+                updateCheckInterval = null;
+              }
+            }
+            return;
           }
 
           if (earliestTime) {
@@ -119,7 +140,7 @@
               }
             }
           } else {
-            document.getElementById('nextUpdateTime').textContent = "Indisponible";
+            document.getElementById('nextUpdateTime').textContent = "Prochaine mise à jour: bientôt";
             // Reset the updating state
             if (isUpdating) {
               isUpdating = false;
@@ -156,20 +177,29 @@
         fetch('/timer-info')
           .then(response => response.json())
           .then(data => {
+            console.log('Update check data:', data);
+            
             const nextRuns = data.next_runs;
-            // Get the earliest next run time
+            
+            // Check if we have any valid next run times in the future
+            let hasFutureNextRuns = false;
             let earliestTime = null;
+            
             for (const jobId in nextRuns) {
               if (nextRuns[jobId]) {
                 const jobTime = new Date(nextRuns[jobId]);
-                if (!earliestTime || jobTime < earliestTime) {
-                  earliestTime = jobTime;
+                if (jobTime > new Date()) {
+                  hasFutureNextRuns = true;
+                  if (!earliestTime || jobTime < earliestTime) {
+                    earliestTime = jobTime;
+                  }
                 }
               }
             }
             
-            // If we have a future time, the update is complete
-            if (earliestTime && earliestTime > new Date()) {
+            // If we have future next run times, the update is likely complete
+            if (hasFutureNextRuns) {
+              console.log('Update complete, refreshing page...');
               // Refresh the page to show new offers
               location.reload();
             }
