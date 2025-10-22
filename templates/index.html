@@ -181,6 +181,10 @@
   </div>
 
   <script>
+    // Track if we're currently showing the "Mise à jour en cours..." message
+    let isUpdating = false;
+    let updateCheckInterval = null;
+
     // Function to update the timer display
     function updateTimerDisplay() {
       fetch('/timer-info')
@@ -207,25 +211,96 @@
             if (diffMins > 0) {
               document.getElementById('nextUpdateTime').textContent =
                 `${diffMins} minute${diffMins > 1 ? 's' : ''} et ${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+              // Reset the updating state if we were showing "Mise à jour en cours..."
+              if (isUpdating) {
+                isUpdating = false;
+                // Clear the update check interval if it exists
+                if (updateCheckInterval) {
+                  clearInterval(updateCheckInterval);
+                  updateCheckInterval = null;
+                }
+              }
             } else if (diffSecs > 0) {
               document.getElementById('nextUpdateTime').textContent =
                 `${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+              // Reset the updating state if we were showing "Mise à jour en cours..."
+              if (isUpdating) {
+                isUpdating = false;
+                // Clear the update check interval if it exists
+                if (updateCheckInterval) {
+                  clearInterval(updateCheckInterval);
+                  updateCheckInterval = null;
+                }
+              }
             } else {
-              // When time is up, show a message and then refresh after a short delay
-              document.getElementById('nextUpdateTime').textContent = "Mise à jour en cours...";
-              // Refresh the page after 5 seconds to show new offers
-              setTimeout(() => {
-                location.reload();
-              }, 5000);
+              // When time is up, show the updating message
+              if (!isUpdating) {
+                isUpdating = true;
+                document.getElementById('nextUpdateTime').textContent = "Mise à jour en cours...";
+                // Start checking for when the update is complete
+                startUpdateCheck();
+              }
             }
           } else {
             document.getElementById('nextUpdateTime').textContent = "Indisponible";
+            // Reset the updating state
+            if (isUpdating) {
+              isUpdating = false;
+              if (updateCheckInterval) {
+                clearInterval(updateCheckInterval);
+                updateCheckInterval = null;
+              }
+            }
           }
         })
         .catch(error => {
           console.error('Error fetching timer info:', error);
           document.getElementById('nextUpdateTime').textContent = "Erreur de chargement";
+          // Reset the updating state on error
+          if (isUpdating) {
+            isUpdating = false;
+            if (updateCheckInterval) {
+              clearInterval(updateCheckInterval);
+              updateCheckInterval = null;
+            }
+          }
         });
+    }
+
+    // Function to check if the update is complete and refresh the page
+    function startUpdateCheck() {
+      // Clear any existing interval
+      if (updateCheckInterval) {
+        clearInterval(updateCheckInterval);
+      }
+
+      // Check every 5 seconds if the update is complete
+      updateCheckInterval = setInterval(() => {
+        fetch('/timer-info')
+          .then(response => response.json())
+          .then(data => {
+            const nextRuns = data.next_runs;
+            // Get the earliest next run time
+            let earliestTime = null;
+            for (const jobId in nextRuns) {
+              if (nextRuns[jobId]) {
+                const jobTime = new Date(nextRuns[jobId]);
+                if (!earliestTime || jobTime < earliestTime) {
+                  earliestTime = jobTime;
+                }
+              }
+            }
+
+            // If we have a future time, the update is complete
+            if (earliestTime && earliestTime > new Date()) {
+              // Refresh the page to show new offers
+              location.reload();
+            }
+          })
+          .catch(error => {
+            console.error('Error checking update status:', error);
+          });
+      }, 5000); // Check every 5 seconds
     }
 
     // Update timer immediately and then every second
