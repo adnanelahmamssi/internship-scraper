@@ -5,6 +5,7 @@ from sqlalchemy import func
 import traceback
 import secrets
 import os
+from jinja2 import FileSystemLoader
 
 from database import init_db, get_db_session
 from models import Offer, User, ScrapingStat
@@ -14,15 +15,34 @@ from forms import LoginForm, RegistrationForm
 
 
 def create_app() -> Flask:
-    # Debug information
-    print("Current working directory:", os.getcwd())
-    print("Files in current directory:", os.listdir("."))
-    if os.path.exists("templates"):
-        print("Files in templates directory:", os.listdir("templates"))
-    else:
-        print("Templates directory not found!")
+    # Try to find the templates directory
+    template_dir = None
+    possible_paths = [
+        os.path.join(os.getcwd(), 'templates'),
+        os.path.join(os.path.dirname(__file__), 'templates'),
+        '/opt/render/project/src/templates',
+        './templates'
+    ]
     
-    app = Flask(__name__)
+    for path in possible_paths:
+        if os.path.exists(path):
+            template_dir = path
+            break
+    
+    print("Current working directory:", os.getcwd())
+    print("Template directory found:", template_dir)
+    if template_dir:
+        print("Files in template directory:", os.listdir(template_dir))
+    else:
+        print("Template directory not found!")
+        print("Files in current directory:", os.listdir("."))
+    
+    # Create Flask app with explicit template folder if found
+    if template_dir:
+        app = Flask(__name__, template_folder=template_dir)
+    else:
+        app = Flask(__name__)
+    
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
