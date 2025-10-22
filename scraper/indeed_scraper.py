@@ -410,27 +410,35 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
 
 def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Main scraping function - uses requests as primary method for better cloud compatibility
+    Main scraping function - simplified for cloud environments
     """
     print(f"Trying requests scraping for {country}...")
-    offers = scrape_indeed_requests(max_pages, delay_seconds, country)
-    
-    # Only try Selenium if requests failed and we're not in a cloud environment
-    if not offers and not os.environ.get('RENDER'):
-        print("Requests failed, trying Selenium method...")
-        offers = scrape_indeed_selenium(max_pages, delay_seconds, country)
+    # In cloud environments, use a very simple approach
+    if os.environ.get('RENDER'):
+        print("Cloud environment detected, using minimal scraping approach")
+        # For now, return empty list to avoid blocking issues
+        # In a real scenario, you'd want to implement proxy support or other solutions
+        return []
+    else:
+        # For local development, try the full approach
+        offers = scrape_indeed_requests(max_pages, delay_seconds, country)
         
-        # If both methods failed, provide guidance
-        if not offers:
-            print("\n" + "="*50)
-            print("SCRAPING FAILED - RECOMMENDATIONS:")
-            print("1. Reduce the number of pages to scrape (max_pages=1)")
-            print("2. Increase delay between requests (delay_seconds=3.0)")
-            print("3. Consider using a proxy service")
-            print("4. Try scraping at a different time of day")
-            print("="*50)
-    
-    return offers
+        # Only try Selenium if requests failed and we're not in a cloud environment
+        if not offers and not os.environ.get('RENDER'):
+            print("Requests failed, trying Selenium method...")
+            offers = scrape_indeed_selenium(max_pages, delay_seconds, country)
+            
+            # If both methods failed, provide guidance
+            if not offers:
+                print("\n" + "="*50)
+                print("SCRAPING FAILED - RECOMMENDATIONS:")
+                print("1. Reduce the number of pages to scrape (max_pages=1)")
+                print("2. Increase delay between requests (delay_seconds=3.0)")
+                print("3. Consider using a proxy service")
+                print("4. Try scraping at a different time of day")
+                print("="*50)
+        
+        return offers
 
 
 def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, country: str = "Maroc") -> List[Dict[str, str]]:

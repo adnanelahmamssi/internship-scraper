@@ -55,12 +55,18 @@ def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
     start_time = time.time()
     logger.info(f"Starting scraping job for {country} with max_pages={max_pages}")
     
-    # Scrape the offers
-    offers = scrape_indeed(max_pages=max_pages, country=country)
-    offers_found = len(offers)
-    
-    # Insert new offers
-    inserted = insert_new_offers(offers)
+    try:
+        # Scrape the offers
+        offers = scrape_indeed(max_pages=max_pages, country=country)
+        offers_found = len(offers)
+        
+        # Insert new offers
+        inserted = insert_new_offers(offers)
+    except Exception as e:
+        logger.error(f"Scraping failed for {country}: {e}")
+        offers_found = 0
+        inserted = 0
+        # Continue to record stats even if scraping failed
     
     # Record scraping statistics
     end_time = time.time()
