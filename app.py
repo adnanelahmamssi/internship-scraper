@@ -609,6 +609,55 @@ def create_app() -> Flask:
         finally:
             db.close()
 
+    @app.route("/debug-info")
+    @login_required
+    def debug_info():
+        """Debug endpoint to show application status"""
+        db = get_db_session()
+        try:
+            # Get database info
+            offer_count = db.query(Offer).count()
+            user_count = db.query(User).count()
+            
+            # Get recent offers
+            recent_offers = db.query(Offer).order_by(Offer.created_at.desc()).limit(5).all()
+            
+            # Check scheduler
+            try:
+                from scheduler import get_next_run_times
+                next_runs = get_next_run_times(scheduler)
+                scheduler_status = "Running"
+            except Exception as e:
+                next_runs = {}
+                scheduler_status = f"Error: {e}"
+            
+            return jsonify({
+                "application": "Internship Tracker",
+                "database": {
+                    "status": "Connected",
+                    "offers_count": offer_count,
+                    "users_count": user_count
+                },
+                "scheduler": {
+                    "status": scheduler_status,
+                    "next_runs": {k: v.isoformat() if v else None for k, v in next_runs.items()}
+                },
+                "session": {
+                    "user_id": session.get('user_id'),
+                    "user_email": session.get('user_email')
+                }
+            })
+        except Exception as e:
+            logger.error(f"Debug info error: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "error": str(e),
+                "message": "Failed to retrieve debug information"
+            }), 500
+        finally:
+            db.close()
+
     # Make sure we return the app
     return app
 
