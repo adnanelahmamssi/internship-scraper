@@ -14,16 +14,8 @@ from forms import LoginForm, RegistrationForm
 
 
 def create_app() -> Flask:
-    # Get the directory where this file is located
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    
-    # Use relative paths from the base directory
-    template_dir = os.path.join(basedir, 'templates')
-    static_dir = os.path.join(basedir, 'static')
-    
-    app = Flask(__name__, 
-                static_folder=static_dir, 
-                template_folder=template_dir)
+    # Simple approach - let Flask use default template resolution
+    app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
