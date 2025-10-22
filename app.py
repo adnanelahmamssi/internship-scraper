@@ -14,11 +14,16 @@ from forms import LoginForm, RegistrationForm
 
 
 def create_app() -> Flask:
-    # Use absolute paths for templates and static files
-    template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
-    static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
+    # Get the directory where this file is located
+    basedir = os.path.abspath(os.path.dirname(__file__))
     
-    app = Flask(__name__, static_folder=static_dir, template_folder=template_dir)
+    # Use relative paths from the base directory
+    template_dir = os.path.join(basedir, 'templates')
+    static_dir = os.path.join(basedir, 'static')
+    
+    app = Flask(__name__, 
+                static_folder=static_dir, 
+                template_folder=template_dir)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
