@@ -410,13 +410,14 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
 
 def scrape_indeed(max_pages: int = 1, delay_seconds: float = 5.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Main scraping function - enhanced for cloud environments with multiple strategies
+    Main scraping function - enhanced for cloud environments with multiple bypass strategies
     """
     print(f"Trying requests scraping for {country}...")
     
     # Try multiple strategies
     strategies = [
-        ("enhanced_requests", lambda: scrape_indeed_requests(max_pages, delay_seconds, country)),
+        ("scraperapi", lambda: scrape_with_scraperapi(max_pages, delay_seconds, country)),
+        ("direct_requests", lambda: scrape_with_direct_requests(max_pages, delay_seconds, country)),
     ]
     
     # Only try Selenium if not in cloud environment
@@ -427,7 +428,7 @@ def scrape_indeed(max_pages: int = 1, delay_seconds: float = 5.0, country: str =
         try:
             print(f"Trying strategy: {strategy_name}")
             offers = strategy_func()
-            if offers:
+            if offers and len(offers) > 0:
                 print(f"Success with {strategy_name}: {len(offers)} offers found")
                 return offers
             else:
@@ -440,9 +441,9 @@ def scrape_indeed(max_pages: int = 1, delay_seconds: float = 5.0, country: str =
     print("\n" + "="*50)
     print("ALL SCRAPING STRATEGIES FAILED")
     print("RECOMMENDATIONS:")
-    print("1. Set SCRAPER_PROXIES environment variable with working proxies")
-    print("2. Try scraping at a different time of day")
-    print("3. Reduce frequency (increase delay between scrapes)")
+    print("1. Get a ScraperAPI key and set SCRAPER_API_KEY environment variable")
+    print("2. Try using proxy services")
+    print("3. Reduce scraping frequency")
     print("4. Check if Indeed has changed their HTML structure")
     print("="*50)
     
@@ -464,79 +465,131 @@ def get_proxy_list():
 
 def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 5.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Fallback scraping method using requests with proxy support
+    Fallback scraping method using requests with multiple bypass strategies
     """
     offers: List[Dict[str, str]] = []
-    proxies = get_proxy_list()
     
     print(f"Starting requests-based scraping for {country} with {max_pages} pages")
-    print(f"Available proxies: {len(proxies) if proxies else 'None'}")
     
-    # If we have proxies, try them first
-    if proxies:
-        print("Trying with proxies...")
-        for proxy in proxies:
-            try:
-                print(f"Trying proxy: {proxy}")
-                session = requests.Session()
-                
-                # Set up proxy
-                proxy_dict = {
-                    "http": f"http://{proxy}",
-                    "https": f"http://{proxy}"
-                }
-                session.proxies.update(proxy_dict)
-                
-                # Use rotating user agents
-                headers = DEFAULT_HEADERS.copy()
-                headers["User-Agent"] = random.choice(USER_AGENTS)
-                session.headers.update(headers)
-                
-                # Try scraping with this proxy
-                result = _scrape_with_session(session, max_pages, delay_seconds, country)
-                if result:
-                    print(f"Success with proxy {proxy}!")
-                    return result
-                else:
-                    print(f"No results with proxy {proxy}")
-                    
-            except Exception as e:
-                print(f"Proxy {proxy} failed: {e}")
-                continue
-        
-        print("All proxies failed, trying without proxies...")
+    # Try multiple bypass strategies
+    strategies = [
+        scrape_with_scraperapi,  # Try ScraperAPI first if available
+        scrape_with_direct_requests,  # Direct requests with enhanced headers
+    ]
     
-    # Fallback to direct requests (without proxies)
-    session = requests.Session()
-    headers = DEFAULT_HEADERS.copy()
-    headers["User-Agent"] = random.choice(USER_AGENTS)
-    session.headers.update(headers)
+    for strategy_func in strategies:
+        try:
+            print(f"Trying strategy: {strategy_func.__name__}")
+            result = strategy_func(max_pages, delay_seconds, country)
+            if result and len(result) > 0:
+                print(f"Success with {strategy_func.__name__}: {len(result)} offers found")
+                return result
+            else:
+                print(f"Strategy {strategy_func.__name__} returned no offers")
+        except Exception as e:
+            print(f"Strategy {strategy_func.__name__} failed: {e}")
+            continue
     
-    return _scrape_with_session(session, max_pages, delay_seconds, country)
+    return []
 
-def _scrape_with_session(session, max_pages, delay_seconds, country):
-    """Helper function to scrape with a given session"""
+def scrape_with_scraperapi(max_pages: int, delay_seconds: float, country: str) -> List[Dict[str, str]]:
+    """Scrape using ScraperAPI service to bypass anti-bot protection"""
+    scraperapi_key = os.environ.get('SCRAPER_API_KEY')
+    if not scraperapi_key:
+        print("No SCRAPER_API_KEY found, skipping ScraperAPI strategy")
+        return []
+    
+    print(f"Using ScraperAPI with key: {scraperapi_key[:5]}...")
     offers: List[Dict[str, str]] = []
     
     for page in range(max_pages):
         start = page * 10
         url = build_indeed_url(start=start, country=country)
-        print(f"Scraping page {page + 1}: {url}")
+        print(f"Scraping page {page + 1} via ScraperAPI: {url}")
         
-        # Increase delay and add some randomness
-        delay = delay_seconds + random.uniform(3.0, 7.0) + (page * 2.0)
+        # Add delay
+        delay = delay_seconds + random.uniform(2.0, 5.0)
+        time.sleep(delay)
+        
+        try:
+            # ScraperAPI endpoint
+            scraperapi_url = f"http://api.scraperapi.com?api_key={scraperapi_key}&url={url}"
+            
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            }
+            
+            resp = requests.get(scraperapi_url, headers=headers, timeout=60)
+            print(f"ScraperAPI response status: {resp.status_code}")
+            
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                job_cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
+                
+                if job_cards:
+                    page_offers = 0
+                    for card in job_cards:
+                        data = parse_job_card(card)
+                        if data.get("link") and data.get("title"):
+                            offers.append(data)
+                            page_offers += 1
+                            if page_offers <= 2:  # Only print first 2 offers
+                                print(f"Added: {data['title'][:50]}...")
+                    
+                    print(f"Page {page + 1}: {page_offers} offers added via ScraperAPI")
+                    return offers  # Return what we have
+                else:
+                    print("No job cards found in ScraperAPI response")
+            else:
+                print(f"ScraperAPI failed with status {resp.status_code}")
+                
+        except Exception as e:
+            print(f"ScraperAPI error: {e}")
+            continue
+    
+    return offers
+
+def scrape_with_direct_requests(max_pages: int, delay_seconds: float, country: str) -> List[Dict[str, str]]:
+    """Scrape directly with enhanced headers and delays"""
+    offers: List[Dict[str, str]] = []
+    session = requests.Session()
+    
+    # Enhanced headers to avoid bot detection
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
+        "Pragma": "no-cache",
+    }
+    session.headers.update(headers)
+    
+    for page in range(max_pages):
+        start = page * 10
+        url = build_indeed_url(start=start, country=country)
+        print(f"Scraping page {page + 1} directly: {url}")
+        
+        # Increase delay for direct requests
+        delay = delay_seconds + random.uniform(5.0, 10.0) + (page * 3.0)
         print(f"Waiting {delay:.2f} seconds before request...")
         time.sleep(delay)
         
         try:
             resp = session.get(url, timeout=30, allow_redirects=True)
-            print(f"HTTP {resp.status_code} for {url}")
+            print(f"Direct request HTTP {resp.status_code} for {url}")
             
             # Check if we're being blocked
             if resp.status_code in [403, 429]:
                 print(f"Blocked with status {resp.status_code}")
-                # Don't continue with this session
-                return []
+                return []  # Don't continue if blocked
                 
             if resp.status_code != 200:
                 print(f"Failed with status {resp.status_code}")
@@ -553,9 +606,7 @@ def _scrape_with_session(session, max_pages, delay_seconds, country):
             # Check if we got a valid Indeed page
             job_cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
             if not job_cards:
-                print("No job cards found in response")
-                # Print a snippet of the response to understand what we got
-                print(f"Response preview: {resp.text[:300]}...")
+                print("No job cards found in direct response")
                 continue
             
             print(f"Successfully parsed page {page + 1} with {len(job_cards)} job cards")
@@ -575,9 +626,10 @@ def _scrape_with_session(session, max_pages, delay_seconds, country):
             # If we got offers, we're successful
             if page_offers > 0:
                 print(f"Successfully scraped {len(offers)} offers so far")
+                return offers  # Return early on success
                 
         except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
+            print(f"Direct request error: {e}")
             continue
         except Exception as e:
             print(f"Unexpected error: {e}")

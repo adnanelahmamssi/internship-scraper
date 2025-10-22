@@ -556,6 +556,49 @@ def create_app() -> Flask:
                 "message": "Scraping failed. Check logs for details."
             }), 500
 
+    @app.route("/test-scrape-api")
+    @login_required
+    def test_scrape_api():
+        """Test route to manually trigger scraping with ScraperAPI"""
+        api_key = request.args.get('api_key', '')
+        try:
+            # Get API key from environment variable for testing
+            if api_key:
+                # Temporarily set the API key environment variable
+                os.environ['SCRAPER_API_KEY'] = api_key
+                print(f"Testing with ScraperAPI key: {api_key[:5]}...")
+            
+            # Import here to avoid circular imports
+            from scheduler import run_scrape_job
+            from scraper.indeed_scraper import scrape_with_scraperapi
+            
+            # Test the ScraperAPI function directly
+            offers = scrape_with_scraperapi(max_pages=1, delay_seconds=1.0, country="Maroc")
+            
+            # Clean up
+            if api_key:
+                os.environ.pop('SCRAPER_API_KEY', None)
+            
+            return jsonify({
+                "status": "success",
+                "offers_found": len(offers),
+                "offers": offers[:5],  # Return first 5 offers
+                "message": f"ScraperAPI test completed. Found {len(offers)} offers.",
+                "api_key_used": "Yes" if api_key else "No"
+            })
+        except Exception as e:
+            logger.error(f"ScraperAPI test error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Clean up
+            if api_key:
+                os.environ.pop('SCRAPER_API_KEY', None)
+            return jsonify({
+                "status": "error",
+                "error": str(e),
+                "message": "ScraperAPI test failed. Check logs for details."
+            }), 500
+
     @app.route("/test-scrape-verbose")
     @login_required
     def test_scrape_verbose():
