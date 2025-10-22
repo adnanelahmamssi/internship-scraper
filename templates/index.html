@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if selected_country %}{{ selected_country }} - {% endif %}Internship Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand">Internship Tracker</a>
+      <div class="nav-links">
+        <a href="{{ url_for('all_offers') }}" class="nav-link">Toutes les offres</a>
+        <a href="{{ url_for('stats') }}" class="nav-link">Statistiques</a>
+        <a href="{{ url_for('logout') }}" class="nav-link">Déconnexion</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages - Moved to appear immediately below navbar -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="flash-message flash-{{ category }}" style="margin-top: 1rem;">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Timer Interface -->
+  <div class="timer-container">
+    <h2 class="timer-title">Prochaine mise à jour automatique</h2>
+    <div class="timer-display" id="nextUpdateTime">
+      Chargement...
+    </div>
+    <div class="timer-info">
+      Les offres sont mises à jour automatiquement toutes les 3 minutes
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Page Header -->
+    <header style="padding: 2rem 0; text-align: center;">
+      <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem; color: #333333;">
+        {% if selected_country %}
+        Offres de stage en {{ selected_country }}
+        {% elif show_all_offers %}
+        Toutes les offres de stage
+        {% else %}
+        Offres de stage
+        {% endif %}
+      </h1>
+      <p style="font-size: 1.25rem; color: #64748b; max-width: 36rem; margin: 0 auto;">
+        {% if selected_country %}
+        Découvrez les dernières opportunités de stage en {{ selected_country }}
+        {% elif show_all_offers %}
+        Parcourez toutes les offres de stage disponibles
+        {% else %}
+        Trouvez votre prochaine opportunité de stage
+        {% endif %}
+      </p>
+      <!-- Refresh Button -->
+      <div style="margin-top: 1.5rem;">
+        <form method="POST" action="{{ url_for('api_scrape') }}" style="display: inline;">
+          <input type="hidden" name="country" value="{{ selected_country or 'Maroc' }}">
+          <button type="submit" class="btn btn-primary" style="font-weight: 600;">Actualiser les offres</button>
+        </form>
+      </div>
+    </header>
+
+    <!-- Filters Section -->
+    <section class="filters-section">
+      <form method="GET" class="filters-form">
+        <div class="filters-grid">
+          <div class="filter-group">
+            <label class="filter-label" for="title">Titre</label>
+            <input type="text" id="title" name="title" class="form-input" placeholder="Titre du poste"
+              value="{{ request.args.get('title', '') }}">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="company">Entreprise</label>
+            <input type="text" id="company" name="company" class="form-input" placeholder="Nom de l'entreprise"
+              value="{{ request.args.get('company', '') }}">
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="city">Ville</label>
+            <select id="city" name="city" class="form-input">
+              <option value="">Toutes les villes</option>
+              {% for city in cities %}
+              <option value="{{ city }}" {% if request.args.get('city')==city %}selected{% endif %}>{{ city }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="date_filter">Date</label>
+            <select id="date_filter" name="date_filter" class="form-input">
+              <option value="">Toutes les dates</option>
+              <option value="today" {% if request.args.get('date_filter')=='today' %}selected{% endif %}>Aujourd'hui
+              </option>
+              <option value="week" {% if request.args.get('date_filter')=='week' %}selected{% endif %}>Cette semaine
+              </option>
+              <option value="month" {% if request.args.get('date_filter')=='month' %}selected{% endif %}>Ce mois
+              </option>
+              <option value="3months" {% if request.args.get('date_filter')=='3months' %}selected{% endif %}>3 derniers
+                mois</option>
+            </select>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button type="submit" class="btn btn-primary" style="font-weight: 600;">Filtrer les offres</button>
+          <a href="{{ request.url.split('?')[0] }}" class="btn btn-secondary"
+            style="margin-left: 1rem; font-weight: 600;">Réinitialiser</a>
+        </div>
+      </form>
+    </section>
+
+    <!-- Job Listings -->
+    <section class="job-listings">
+      {% if offers %}
+      {% for offer in offers %}
+      <div class="job-card">
+        <h2 class="job-title">🏢 {{ offer.title }}</h2>
+        <div class="job-company">🏢 {{ offer.company or 'Entreprise non spécifiée' }}</div>
+        <div class="job-location">
+          📍 {{ offer.location or 'Lieu non spécifié' }}{% if offer.country %} - {{ offer.country }}{% endif %}
+        </div>
+        <div class="job-date">
+          📅 Publié:
+          {% if offer.date_posted_parsed %}
+          {{ offer.date_posted_parsed.strftime('%d/%m/%Y') }}
+          {% elif offer.date_posted %}
+          {{ offer.date_posted }}
+          {% else %}
+          {{ offer.created_at.strftime('%d/%m/%Y') if offer.created_at else 'Date non spécifiée' }}
+          {% endif %}
+        </div>
+        {% if offer.link %}
+        <div class="job-actions">
+          <a href="{{ offer.link }}" target="_blank" class="btn btn-secondary">Voir l'offre</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <div class="card" style="text-align: center; padding: 3rem;">
+        <h3>Aucune offre trouvée</h3>
+        <p>Essayez de modifier vos filtres ou revenez plus tard pour voir de nouvelles offres.</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav class="pagination">
+      {% if page > 1 %}
+      <a href="{{ request.url.replace('page=' + page|string, 'page=' + (page-1)|string) if 'page=' in request.url else request.url + ('&' if '?' in request.url else '?') + 'page=' + (page-1)|string }}"
+        class="page-link">Page Précédente</a>
+      {% endif %}
+
+      {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+      {% if p == page %}
+      <span class="page-link active">{{ p }}</span>
+      {% else %}
+      <a href="{{ request.url.replace('page=' + page|string, 'page=' + p|string) if 'page=' in request.url else request.url + ('&' if '?' in request.url else '?') + 'page=' + p|string }}"
+        class="page-link">{{ p }}</a>
+      {% endif %}
+      {% endfor %}
+
+      {% if page < total_pages %} <a
+        href="{{ request.url.replace('page=' + page|string, 'page=' + (page+1)|string) if 'page=' in request.url else request.url + ('&' if '?' in request.url else '?') + 'page=' + (page+1)|string }}"
+        class="page-link">Page Suivante</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+  </div>
+
+  <script>
+    // Function to update the timer display
+    function updateTimerDisplay() {
+      fetch('/timer-info')
+        .then(response => response.json())
+        .then(data => {
+          const nextRuns = data.next_runs;
+          // Get the earliest next run time
+          let earliestTime = null;
+          for (const jobId in nextRuns) {
+            if (nextRuns[jobId]) {
+              const jobTime = new Date(nextRuns[jobId]);
+              if (!earliestTime || jobTime < earliestTime) {
+                earliestTime = jobTime;
+              }
+            }
+          }
+
+          if (earliestTime) {
+            const now = new Date();
+            const diffMs = earliestTime - now;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffSecs = Math.floor((diffMs % 60000) / 1000);
+
+            if (diffMins > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffMins} minute${diffMins > 1 ? 's' : ''} et ${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else if (diffSecs > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else {
+              document.getElementById('nextUpdateTime').textContent =
+                "En cours...";
+            }
+          } else {
+            document.getElementById('nextUpdateTime').textContent = "Indisponible";
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching timer info:', error);
+          document.getElementById('nextUpdateTime').textContent = "Erreur de chargement";
+        });
+    }
+
+    // Update timer immediately and then every second
+    updateTimerDisplay();
+    setInterval(updateTimerDisplay, 1000);
+  </script>
+</body>
+
+</html>

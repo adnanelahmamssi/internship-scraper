@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Statistiques - Internship Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand">Internship Tracker</a>
+      <div class="nav-links">
+        <a href="{{ url_for('all_offers') }}" class="nav-link">Toutes les offres</a>
+        <a href="{{ url_for('index') }}" class="nav-link">Accueil</a>
+        <a href="{{ url_for('logout') }}" class="nav-link">Déconnexion</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages - Moved to appear immediately below navbar -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="flash-message flash-{{ category }}" style="margin-top: 1rem;">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Timer Interface -->
+  <div class="timer-container">
+    <h2 class="timer-title">Prochaine mise à jour automatique</h2>
+    <div class="timer-display" id="nextUpdateTime">
+      Chargement...
+    </div>
+    <div class="timer-info">
+      Les offres sont mises à jour automatiquement toutes les 3 minutes
+    </div>
+  </div>
+
+  <!-- Hero Section with Vibrant Background -->
+  <section class="hero-section-stats">
+    <div class="container">
+      <h1 class="hero-title-stats">Statistiques des offres de stage</h1>
+      <p class="hero-subtitle-stats">Aperçu des tendances et des données sur les offres de stage</p>
+    </div>
+  </section>
+
+  <div class="container">
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <!-- Total Offers Card -->
+      <div class="stat-card">
+        <h3 class="stat-title">📊 Total des offres</h3>
+        <div class="stat-value">{{ total_offers }}</div>
+        <p>Offres de stage répertoriées dans notre base de données</p>
+      </div>
+
+      <!-- Top Companies Card -->
+      <div class="stat-card">
+        <h3 class="stat-title">🏢 Entreprises les plus actives</h3>
+        {% if top_companies %}
+        <ul class="stat-list">
+          {% for company, count in top_companies %}
+          <li class="stat-item">
+            <span class="stat-label">{{ company or 'Entreprise non spécifiée' }}</span>
+            <span class="stat-count">{{ count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>Aucune donnée disponible</p>
+        {% endif %}
+      </div>
+
+      <!-- Top Cities Card -->
+      <div class="stat-card">
+        <h3 class="stat-title">📍 Villes avec le plus d'offres</h3>
+        {% if offers_by_city %}
+        <ul class="stat-list">
+          {% for city, count in offers_by_city %}
+          <li class="stat-item">
+            <span class="stat-label">{{ city or 'Lieu non spécifié' }}</span>
+            <span class="stat-count">{{ count }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>Aucune donnée disponible</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Scraping Statistics -->
+    <div class="stats-grid" style="margin-top: 2rem;">
+      <!-- Scraping Summary -->
+      <div class="stat-card">
+        <h3 class="stat-title">📈 Résumé des Scrapings</h3>
+        {% if scraping_summary %}
+        <ul class="stat-list">
+          {% for stat in scraping_summary %}
+          <li class="stat-item">
+            <span class="stat-label">{{ stat.country }}</span>
+            <span class="stat-count">{{ stat.runs }} runs</span>
+          </li>
+          <li class="stat-item">
+            <span class="stat-label">Trouvées</span>
+            <span class="stat-count">{{ stat.total_found or 0 }}</span>
+          </li>
+          <li class="stat-item">
+            <span class="stat-label">Insérées</span>
+            <span class="stat-count">{{ stat.total_inserted or 0 }}</span>
+          </li>
+          <li class="stat-item">
+            <span class="stat-label">Durée moyenne (s)</span>
+            <span class="stat-count">{{ "%.1f"|format(stat.avg_duration or 0) }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p>Aucune donnée de scraping disponible</p>
+        {% endif %}
+      </div>
+
+      <!-- Recent Scraping Activity -->
+      <div class="stat-card" style="grid-column: span 2;">
+        <h3 class="stat-title">🕒 Activité Récente de Scraping</h3>
+        {% if recent_scraping_stats %}
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background-color: #f1f5f9; text-align: left;">
+                <th style="padding: 0.75rem; border-bottom: 2px solid #e2e8f0;">Pays</th>
+                <th style="padding: 0.75rem; border-bottom: 2px solid #e2e8f0;">Trouvées</th>
+                <th style="padding: 0.75rem; border-bottom: 2px solid #e2e8f0;">Insérées</th>
+                <th style="padding: 0.75rem; border-bottom: 2px solid #e2e8f0;">Durée (s)</th>
+                <th style="padding: 0.75rem; border-bottom: 2px solid #e2e8f0;">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for stat in recent_scraping_stats %}
+              <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 0.75rem;">{{ stat.country }}</td>
+                <td style="padding: 0.75rem; text-align: center;">{{ stat.offers_found }}</td>
+                <td style="padding: 0.75rem; text-align: center;">{{ stat.offers_inserted }}</td>
+                <td style="padding: 0.75rem; text-align: center;">{{ stat.duration_seconds }}</td>
+                <td style="padding: 0.75rem;">{{ stat.execution_time.strftime('%d/%m/%Y %H:%M') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p>Aucune activité de scraping récente</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Function to update the timer display
+    function updateTimerDisplay() {
+      fetch('/timer-info')
+        .then(response => response.json())
+        .then(data => {
+          const nextRuns = data.next_runs;
+          // Get the earliest next run time
+          let earliestTime = null;
+          for (const jobId in nextRuns) {
+            if (nextRuns[jobId]) {
+              const jobTime = new Date(nextRuns[jobId]);
+              if (!earliestTime || jobTime < earliestTime) {
+                earliestTime = jobTime;
+              }
+            }
+          }
+
+          if (earliestTime) {
+            const now = new Date();
+            const diffMs = earliestTime - now;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffSecs = Math.floor((diffMs % 60000) / 1000);
+
+            if (diffMins > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffMins} minute${diffMins > 1 ? 's' : ''} et ${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else if (diffSecs > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else {
+              document.getElementById('nextUpdateTime').textContent =
+                "En cours...";
+            }
+          } else {
+            document.getElementById('nextUpdateTime').textContent = "Indisponible";
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching timer info:', error);
+          document.getElementById('nextUpdateTime').textContent = "Erreur de chargement";
+        });
+    }
+
+    // Update timer immediately and then every second
+    updateTimerDisplay();
+    setInterval(updateTimerDisplay, 1000);
+  </script>
+</body>
+
+</html>

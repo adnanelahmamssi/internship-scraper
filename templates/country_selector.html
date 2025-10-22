@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sélection du pays - Internship Tracker</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-brand">Internship Tracker</a>
+      <div class="nav-links">
+        <a href="{{ url_for('stats') }}" class="nav-link">Statistiques</a>
+        <a href="{{ url_for('logout') }}" class="nav-link">Déconnexion</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages - Moved to appear immediately below navbar -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1rem;">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="flash-message flash-{{ category }}" style="margin-top: 1rem;">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Timer Interface -->
+  <div class="timer-container">
+    <h2 class="timer-title">Prochaine mise à jour automatique</h2>
+    <div class="timer-display" id="nextUpdateTime">
+      Chargement...
+    </div>
+    <div class="timer-info">
+      Les offres sont mises à jour automatiquement toutes les 3 minutes
+    </div>
+  </div>
+
+  <!-- Hero Section with Vibrant Background -->
+  <section class="hero-section">
+    <div class="hero-content">
+      <h1 class="hero-title">Bienvenue sur Internship Tracker</h1>
+      <p class="hero-subtitle">Sélectionnez un pays pour découvrir les dernières offres de stage dans votre région</p>
+    </div>
+  </section>
+
+  <div class="countries-grid">
+    {% for country in countries %}
+    <a href="{{ url_for('country_offers', country_name=country.name) }}" class="country-card">
+      <div class="country-flag">{{ country.flag }}</div>
+      <h2 class="country-name">{{ country.name }}</h2>
+      <div class="country-offers">Voir les offres de stage</div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <script>
+    // Function to update the timer display
+    function updateTimerDisplay() {
+      fetch('/timer-info')
+        .then(response => response.json())
+        .then(data => {
+          const nextRuns = data.next_runs;
+          // Get the earliest next run time
+          let earliestTime = null;
+          for (const jobId in nextRuns) {
+            if (nextRuns[jobId]) {
+              const jobTime = new Date(nextRuns[jobId]);
+              if (!earliestTime || jobTime < earliestTime) {
+                earliestTime = jobTime;
+              }
+            }
+          }
+
+          if (earliestTime) {
+            const now = new Date();
+            const diffMs = earliestTime - now;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffSecs = Math.floor((diffMs % 60000) / 1000);
+
+            if (diffMins > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffMins} minute${diffMins > 1 ? 's' : ''} et ${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else if (diffSecs > 0) {
+              document.getElementById('nextUpdateTime').textContent =
+                `${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
+            } else {
+              document.getElementById('nextUpdateTime').textContent =
+                "En cours...";
+            }
+          } else {
+            document.getElementById('nextUpdateTime').textContent = "Indisponible";
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching timer info:', error);
+          document.getElementById('nextUpdateTime').textContent = "Erreur de chargement";
+        });
+    }
+
+    // Update timer immediately and then every second
+    updateTimerDisplay();
+    setInterval(updateTimerDisplay, 1000);
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - Internship Tracker</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+
+<body class="auth-wrapper">
+    <div class="auth-container">
+        <!-- Left Column with Branding -->
+        <div class="auth-left">
+            <h2>Internship Tracker</h2>
+            <ul class="auth-features">
+                <li>Scraping rapide des offres d'emploi</li>
+                <li>Données multi-pays en temps réel</li>
+                <li>Mises à jour planifiées automatiques</li>
+                <li>Interface moderne et intuitive</li>
+            </ul>
+        </div>
+
+        <!-- Right Column with Login Form -->
+        <div class="auth-right">
+            <h1 class="auth-title">Connexion</h1>
+
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="flash-message flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                {{ form.hidden_tag() }}
+
+                <div class="form-group">
+                    <label class="form-label" for="{{ form.email.id }}">Email</label>
+                    {{ form.email(class="form-input") }}
+                    {% if form.email.errors %}
+                    {% for error in form.email.errors %}
+                    <div class="flash-message flash-error" style="margin-top: 0.75rem;">{{ error }}</div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="{{ form.password.id }}">Mot de passe</label>
+                    {{ form.password(class="form-input") }}
+                    {% if form.password.errors %}
+                    {% for error in form.password.errors %}
+                    <div class="flash-message flash-error" style="margin-top: 0.75rem;">{{ error }}</div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.submit(class="btn btn-primary", style="width: 100%; padding: 0.75rem; font-size: 1.125rem;
+                    font-weight: 600;") }}
+                </div>
+            </form>
+
+            <div class="auth-footer">
+                <p>Pas encore de compte ? <a href="{{ url_for('register') }}">S'inscrire</a></p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
