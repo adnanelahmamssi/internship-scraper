@@ -3,12 +3,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    # SQLite file in project directory by default
-    f"sqlite:///" + os.path.join(os.path.dirname(__file__), "internships.db"),
-)
+# Use absolute path for database to ensure it works in all environments
+DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "internships.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
 
+print(f"Database URL: {DATABASE_URL}")
+print(f"Database path: {DATABASE_PATH}")
+if os.path.exists(DATABASE_PATH):
+    print("Database file exists")
+else:
+    print("Database file does NOT exist")
 
 # For SQLite, need check_same_thread=False for multithreaded scheduler access
 engine = create_engine(
@@ -27,5 +31,6 @@ def get_db_session():
 
 
 def init_db():
-    from models import Offer, User  # noqa: F401
+    from models import Offer, User, ScrapingStat  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    print("Database initialized")

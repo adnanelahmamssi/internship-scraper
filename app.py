@@ -5,6 +5,7 @@ from sqlalchemy import func
 import traceback
 import secrets
 import os
+import logging
 
 from database import init_db, get_db_session
 from models import Offer, User, ScrapingStat
@@ -12,132 +13,97 @@ from scheduler import create_scheduler, run_scrape_job, get_next_run_times
 from scraper.indeed_scraper import scrape_indeed
 from forms import LoginForm, RegistrationForm
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def create_app() -> Flask:
-    # Try to find the templates directory
-    template_dir = None
-    possible_paths = [
-        os.path.join(os.getcwd(), 'templates'),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'),
-        '/opt/render/project/src/templates',
-        './templates'
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            template_dir = path
-            break
-    
-    # Debug information
-    print("Template directory found:", template_dir)
-    if template_dir:
-        print("Files in template directory:", os.listdir(template_dir))
-    else:
-        print("Template directory not found!")
-        print("Current working directory:", os.getcwd())
-        print("Files in current directory:", os.listdir("."))
-        if os.path.exists("templates"):
-            print("Templates directory exists in current directory")
-            print("Files in templates directory:", os.listdir("templates"))
-        else:
-            print("Templates directory does not exist in current directory")
-    
-    # Create Flask app with explicit template folder if found
-    if template_dir:
-        app = Flask(__name__, template_folder=template_dir)
-    else:
-        app = Flask(__name__)
-    
+    app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
     scheduler = create_scheduler()
     scheduler.start()
+    logger.info("Scheduler started")
 
     def login_required(f):
         """Decorator to require login for routes"""
         from functools import wraps
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            # Temporarily disable login requirement for testing
-            # if 'user_id' not in session:
-            #     return redirect(url_for('login'))
+            # Re-enable login requirement
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
             return f(*args, **kwargs)
         return decorated_function
 
     @app.route("/login", methods=['GET', 'POST'])
     def login():
         # If user is already logged in, redirect to country selector
-        # if 'user_id' in session:
-        #     return redirect(url_for('index'))
+        if 'user_id' in session:
+            return redirect(url_for('index'))
             
-        # form = LoginForm()
-        # if form.validate_on_submit():
-        #     db = get_db_session()
-        #     try:
-        #         user = db.query(User).filter(User.email == form.email.data).first()
-        #         if user and user.check_password(form.password.data):
-        #             session['user_id'] = user.id
-        #             session['user_email'] = user.email
-        #             # Mark that user has visited the country selector
-        #             session['visited_country_selector'] = True
-        #             return redirect(url_for('index'))
-        #         else:
-        #             flash('Email ou mot de passe invalide.', 'error')
-        #     finally:
-        #         db.close()
+        form = LoginForm()
+        if form.validate_on_submit():
+            db = get_db_session()
+            try:
+                user = db.query(User).filter(User.email == form.email.data).first()
+                if user and user.check_password(form.password.data):
+                    session['user_id'] = user.id
+                    session['user_email'] = user.email
+                    # Mark that user has visited the country selector
+                    session['visited_country_selector'] = True
+                    return redirect(url_for('index'))
+                else:
+                    flash('Email ou mot de passe invalide.', 'error')
+            finally:
+                db.close()
         
-        # For testing, automatically set a session and redirect to index
-        session['user_id'] = 1
-        session['user_email'] = 'test@example.com'
-        session['visited_country_selector'] = True
-        return redirect(url_for('index'))
-        # return render_template('login.html', form=form)
+        return render_template('login.html', form=form)
 
     @app.route("/register", methods=['GET', 'POST'])
     def register():
-        # Temporarily redirect to index for testing
-        return redirect(url_for('index'))
-        # # If user is already logged in, redirect to country selector
-        # if 'user_id' in session:
-        #     return redirect(url_for('index'))
-        #     
-        # form = RegistrationForm()
-        # if form.validate_on_submit():
-        #     print("Form validated successfully")
-        #     db = get_db_session()
-        #     try:
-        #         # Check if user already exists
-        #         existing_user = db.query(User).filter(User.email == form.email.data).first()
-        #         if existing_user:
-        #             flash('Cette adresse email est déjà enregistrée.', 'error')
-        #             print("Email already exists")
-        #         else:
-        #             user = User(
-        #                 email=form.email.data,
-        #                 first_name=form.first_name.data,
-        #                 last_name=form.last_name.data
-        #             )
-        #             user.set_password(form.password.data)
-        #             db.add(user)
-        #             db.commit()
-        #             flash('Inscription réussie. Veuillez vous connecter.', 'success')
-        #             print("User registered successfully")
-        #             return redirect(url_for('login'))
-        #     except Exception as e:
-        #         db.rollback()
-        #         flash('Échec de l\'inscription. Veuillez réessayer.', 'error')
-        #         print(f"Registration error: {e}")
-        #     finally:
-        #         db.close()
-        # else:
-        #     # Print form errors for debugging
-        #     if form.errors:
-        #         print("Form errors:", form.errors)
-        #     else:
-        #         print("Form not validated but no errors shown")
-        # 
-        # return render_template('register.html', form=form)
+        # If user is already logged in, redirect to country selector
+        if 'user_id' in session:
+            return redirect(url_for('index'))
+            
+        form = RegistrationForm()
+        if form.validate_on_submit():
+            print("Form validated successfully")
+            db = get_db_session()
+            try:
+                # Check if user already exists
+                existing_user = db.query(User).filter(User.email == form.email.data).first()
+                if existing_user:
+                    flash('Cette adresse email est déjà enregistrée.', 'error')
+                    print("Email already exists")
+                else:
+                    user = User(
+                        email=form.email.data,
+                        first_name=form.first_name.data,
+                        last_name=form.last_name.data
+                    )
+                    user.set_password(form.password.data)
+                    db.add(user)
+                    db.commit()
+                    flash('Inscription réussie. Veuillez vous connecter.', 'success')
+                    print("User registered successfully")
+                    return redirect(url_for('login'))
+            except Exception as e:
+                db.rollback()
+                flash('Échec de l\'inscription. Veuillez réessayer.', 'error')
+                print(f"Registration error: {e}")
+            finally:
+                db.close()
+        else:
+            # Print form errors for debugging
+            if form.errors:
+                print("Form errors:", form.errors)
+            else:
+                print("Form not validated but no errors shown")
+        
+        return render_template('register.html', form=form)
 
     @app.route("/logout")
     def logout():
@@ -515,6 +481,45 @@ def create_app() -> Flask:
         except Exception as e:
             print(f"Error in api_scrape: {e}")
             traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/test-db")
+    def test_db():
+        """Test route to check database connectivity and data"""
+        db = get_db_session()
+        try:
+            # Count offers
+            offer_count = db.query(Offer).count()
+            # Get recent offers
+            recent_offers = db.query(Offer).order_by(Offer.created_at.desc()).limit(5).all()
+            
+            return jsonify({
+                "offer_count": offer_count,
+                "recent_offers": [
+                    {
+                        "id": o.id,
+                        "title": o.title,
+                        "company": o.company,
+                        "created_at": o.created_at.isoformat() if o.created_at is not None else None
+                    }
+                    for o in recent_offers
+                ]
+            })
+        except Exception as e:
+            logger.error(f"Database test error: {e}")
+            return jsonify({"error": str(e)}), 500
+        finally:
+            db.close()
+
+    @app.route("/test-scrape")
+    @login_required
+    def test_scrape():
+        """Test route to manually trigger scraping"""
+        try:
+            inserted = run_scrape_job(max_pages=1, country="Maroc")
+            return jsonify({"inserted": inserted})
+        except Exception as e:
+            logger.error(f"Scraping test error: {e}")
             return jsonify({"error": str(e)}), 500
 
     # Make sure we return the app

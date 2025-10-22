@@ -6,6 +6,7 @@ from scraper.indeed_scraper import scrape_indeed, extract_country_from_location,
 from sqlalchemy.exc import IntegrityError
 import logging
 import time
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -102,8 +103,9 @@ def get_next_run_times(scheduler):
 
 
 def create_scheduler() -> BackgroundScheduler:
+    logger.info("Creating scheduler...")
     scheduler = BackgroundScheduler()
-
+    
     # Every 3 minutes for Morocco
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Maroc"),
@@ -159,4 +161,5 @@ def create_scheduler() -> BackgroundScheduler:
         coalesce=True,
     )
     
+    logger.info("Scheduler created with 5 jobs")
     return scheduler
