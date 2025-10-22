@@ -556,6 +556,32 @@ def create_app() -> Flask:
                 "message": "Scraping failed. Check logs for details."
             }), 500
 
+    @app.route("/test-scrape-verbose")
+    @login_required
+    def test_scrape_verbose():
+        """Test route to manually trigger scraping with verbose output"""
+        try:
+            # Import here to avoid circular imports
+            from scheduler import run_scrape_job
+            
+            # Use verbose settings for testing
+            inserted = run_scrape_job(max_pages=1, country="Maroc")
+            return jsonify({
+                "status": "success",
+                "inserted": inserted,
+                "message": f"Scraping completed. Inserted {inserted} offers.",
+                "next_steps": "Check logs for detailed scraping information"
+            })
+        except Exception as e:
+            logger.error(f"Verbose scraping test error: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "status": "error",
+                "error": str(e),
+                "message": "Scraping failed. Check logs for details."
+            }), 500
+
     @app.route("/scheduler-test")
     @login_required
     def scheduler_test():

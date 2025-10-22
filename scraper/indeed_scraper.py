@@ -410,15 +410,19 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
 
 def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Main scraping function - simplified for cloud environments
+    Main scraping function - enhanced for cloud environments
     """
     print(f"Trying requests scraping for {country}...")
-    # In cloud environments, use a very simple approach
+    
+    # In cloud environments, try requests first with enhanced settings
     if os.environ.get('RENDER'):
-        print("Cloud environment detected, using minimal scraping approach")
-        # For now, return empty list to avoid blocking issues
-        # In a real scenario, you'd want to implement proxy support or other solutions
-        return []
+        print("Cloud environment detected, using enhanced requests approach")
+        # Try with more conservative settings for cloud
+        offers = scrape_indeed_requests(max_pages=1, delay_seconds=5.0, country=country)
+        
+        # If that fails, we can implement proxy support or other solutions later
+        # For now, return what we got (even if it's 0 offers)
+        return offers
     else:
         # For local development, try the full approach
         offers = scrape_indeed_requests(max_pages, delay_seconds, country)
@@ -441,7 +445,7 @@ def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str =
         return offers
 
 
-def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, country: str = "Maroc") -> List[Dict[str, str]]:
+def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 5.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
     Fallback scraping method using requests with enhanced anti-bot avoidance
     """
@@ -452,6 +456,8 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
     headers = DEFAULT_HEADERS.copy()
     headers["User-Agent"] = random.choice(USER_AGENTS)
     session.headers.update(headers)
+    
+    print(f"Starting requests-based scraping for {country} with {max_pages} pages")
 
     for page in range(max_pages):
         start = page * 10
@@ -463,12 +469,12 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
         attempt = 0
         
         # Increase delay and add some randomness
-        delay = delay_seconds + random.uniform(1.0, 3.0) + (page * 0.5)
+        delay = delay_seconds + random.uniform(2.0, 5.0) + (page * 1.0)
         print(f"Waiting {delay:.2f} seconds before request...")
         time.sleep(delay)
         
         # Try multiple times with exponential backoff
-        max_retries = 3
+        max_retries = 2  # Reduced for cloud environments
         for attempt in range(max_retries):
             try:
                 # Rotate user agent for each attempt
@@ -476,38 +482,37 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
                 headers["User-Agent"] = random.choice(USER_AGENTS)
                 session.headers.update(headers)
                 
+                print(f"Attempt {attempt + 1}/{max_retries} for page {page + 1}")
                 resp = session.get(url, timeout=30, allow_redirects=True)
                 print(f"HTTP {resp.status_code} for {url}")
                 
                 # Check if we're being blocked by anti-bot protection
-                if resp.status_code == 403 or resp.status_code == 429:
+                if resp.status_code in [403, 429]:
                     print(f"Blocked by anti-bot protection (status {resp.status_code}).")
-                    if "captcha" in resp.text.lower() or "blocked" in resp.text.lower() or "robot" in resp.text.lower():
-                        print("CAPTCHA or blocking detected.")
+                    if resp.status_code == 429:  # Rate limited
                         if attempt < max_retries - 1:
-                            # Exponential backoff
-                            backoff_time = (2 ** attempt) * 5
-                            print(f"Retrying in {backoff_time} seconds...")
+                            backoff_time = (2 ** attempt) * 15
+                            print(f"Rate limited. Retrying in {backoff_time} seconds...")
                             time.sleep(backoff_time)
                             continue
                         else:
-                            print("Max retries reached. Stopping requests.")
-                            return offers
+                            print("Rate limited and max retries reached.")
+                            break
+                    else:  # 403 Forbidden
+                        if attempt < max_retries - 1:
+                            backoff_time = (2 ** attempt) * 20
+                            print(f"Blocked. Retrying in {backoff_time} seconds...")
+                            time.sleep(backoff_time)
+                            continue
+                        else:
+                            print("Blocked and max retries reached.")
+                            # Try a different approach for the next country
+                            break
                 
-                if resp.status_code == 429:  # Too many requests
-                    if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 10
-                        print(f"Rate limited. Retrying in {backoff_time} seconds...")
-                        time.sleep(backoff_time)
-                        continue
-                    else:
-                        print("Rate limited and max retries reached.")
-                        return offers
-                        
                 if resp.status_code != 200:
                     print(f"Failed to fetch page {page + 1} (status {resp.status_code})")
                     if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 3
+                        backoff_time = (2 ** attempt) * 5
                         print(f"Retrying in {backoff_time} seconds...")
                         time.sleep(backoff_time)
                         continue
@@ -516,9 +521,9 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
                         
                 # Check if we got a valid response
                 if len(resp.text) < 1000:  # Suspiciously short response
-                    print("Received suspiciously short response, might be blocked")
+                    print(f"Received suspiciously short response ({len(resp.text)} chars), might be blocked")
                     if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 5
+                        backoff_time = (2 ** attempt) * 10
                         print(f"Retrying in {backoff_time} seconds...")
                         time.sleep(backoff_time)
                         continue
@@ -529,38 +534,43 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
                 soup = BeautifulSoup(resp.text, "html.parser")
                 
                 # Check if we got a valid Indeed page
-                if not soup.select("div.job_seen_beacon") and not soup.select(".resultContent"):
+                job_cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
+                if not job_cards:
                     print("No job cards found in response, might be blocked or redirected")
+                    print(f"Response preview: {resp.text[:500]}...")
                     if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 5
+                        backoff_time = (2 ** attempt) * 10
                         print(f"Retrying in {backoff_time} seconds...")
                         time.sleep(backoff_time)
                         continue
                     else:
                         break
                 
+                print(f"Successfully parsed page {page + 1} with {len(job_cards)} job cards")
                 break  # Success, break out of retry loop
                 
             except requests.exceptions.RequestException as e:
                 print(f"Request error on attempt {attempt + 1}: {e}")
                 if attempt < max_retries - 1:
-                    backoff_time = (2 ** attempt) * 3
+                    backoff_time = (2 ** attempt) * 5
                     print(f"Retrying in {backoff_time} seconds...")
                     time.sleep(backoff_time)
                     continue
                 else:
                     print("Max retries reached due to request errors.")
-                    return offers
+                    break
             except Exception as e:
                 print(f"Unexpected error on attempt {attempt + 1}: {e}")
+                import traceback
+                traceback.print_exc()
                 if attempt < max_retries - 1:
-                    backoff_time = (2 ** attempt) * 3
+                    backoff_time = (2 ** attempt) * 5
                     print(f"Retrying in {backoff_time} seconds...")
                     time.sleep(backoff_time)
                     continue
                 else:
                     print("Max retries reached due to unexpected errors.")
-                    return offers
+                    break
         
         # If we failed all retries, stop scraping
         if attempt == max_retries - 1:
@@ -599,13 +609,13 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 3.0, count
             if data.get("link") and data.get("title"):
                 offers.append(data)
                 page_offers += 1
-                if len(offers) <= 5:  # Only print first 5 offers
+                if page_offers <= 3:  # Only print first 3 offers
                     print(f"Added: {data['title'][:50]}...")
 
         print(f"Page {page + 1}: {page_offers} offers added")
         
         # If no offers found on this page, try a few more pages before stopping
-        if page_offers == 0 and page >= 2:
+        if page_offers == 0 and page >= 1:
             print(f"No offers found on page {page + 1}, stopping...")
             break
 
