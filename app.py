@@ -24,9 +24,16 @@ def create_app() -> Flask:
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
-    scheduler = create_scheduler()
-    scheduler.start()
-    logger.info("Scheduler started")
+    # Initialize scheduler with error handling
+    scheduler = None
+    try:
+        scheduler = create_scheduler()
+        scheduler.start()
+        logger.info("Scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start scheduler: {e}")
+        logger.error(traceback.format_exc())
+        scheduler = None
 
     def login_required(f):
         """Decorator to require login for routes"""
@@ -117,7 +124,7 @@ def create_app() -> Flask:
     def timer_info():
         """API endpoint to get timer information"""
         try:
-            next_runs = get_next_run_times(scheduler)
+            next_runs = get_next_run_times(scheduler) if scheduler else {}
             # Convert datetime objects to ISO format for JSON serialization
             next_runs_iso = {}
             for job_id, next_run_time in next_runs.items():
@@ -128,6 +135,8 @@ def create_app() -> Flask:
                 "current_time": datetime.now().isoformat()
             })
         except Exception as e:
+            logger.error(f"Error in timer_info: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({"error": str(e)}), 500
 
     @app.route("/")
@@ -145,7 +154,7 @@ def create_app() -> Flask:
         session['visited_country_selector'] = True
         
         # Get next run times for display
-        next_runs = get_next_run_times(scheduler)
+        next_runs = get_next_run_times(scheduler) if scheduler else {}
         
         return render_template("country_selector.html", countries=countries, next_runs=next_runs)
 
@@ -223,9 +232,10 @@ def create_app() -> Flask:
                                  countries=sorted(countries),
                                  show_all_offers=True)  # Flag to indicate this is the all offers page
         except Exception as e:
-            print(f"Error in all_offers: {e}")
-            traceback.print_exc()
-            return f"Error: {e}", 500
+            logger.error(f"Error in all_offers: {e}")
+            logger.error(traceback.format_exc())
+            flash("Error loading offers", "error")
+            return redirect(url_for('index'))
         finally:
             db.close()
 
@@ -255,8 +265,20 @@ def create_app() -> Flask:
             city = request.args.get("city")
             date_filter = request.args.get("date_filter")
 
-            # Filter by country
-            q = db.query(Offer).filter(Offer.country.ilike(f"%{country_name}%"))
+            # Filter by country - handle case where country might be NULL
+            if country_name == "Maroc":
+                # For Morocco, also include offers where country is NULL (legacy data)
+                q = db.query(Offer).filter(
+                    (Offer.country.ilike(f"%{country_name}%")) | 
+                    (Offer.country.is_(None)) |
+                    (Offer.location.ilike("%Maroc%")) |
+                    (Offer.location.ilike("%Casablanca%")) |
+                    (Offer.location.ilike("%Rabat%")) |
+                    (Offer.location.ilike("%Marrakech%"))
+                )
+            else:
+                # For other countries, filter by country name
+                q = db.query(Offer).filter(Offer.country.ilike(f"%{country_name}%"))
             
             if title:
                 q = q.filter(Offer.title.ilike(f"%{title}%"))
@@ -315,9 +337,10 @@ def create_app() -> Flask:
                                  countries=sorted(countries),
                                  selected_country=country_name)
         except Exception as e:
-            print(f"Error in country_offers: {e}")
-            traceback.print_exc()
-            return f"Error: {e}", 500
+            logger.error(f"Error in country_offers: {e}")
+            logger.error(traceback.format_exc())
+            flash("Error loading offers", "error")
+            return redirect(url_for('index'))
         finally:
             db.close()
 
@@ -372,9 +395,10 @@ def create_app() -> Flask:
                 scraping_summary=scraping_summary
             )
         except Exception as e:
-            print(f"Error in stats: {e}")
-            traceback.print_exc()
-            return f"Error: {e}", 500
+            logger.error(f"Error in stats: {e}")
+            logger.error(traceback.format_exc())
+            flash("Error loading statistics", "error")
+            return redirect(url_for('index'))
         finally:
             db.close()
 
@@ -458,8 +482,8 @@ def create_app() -> Flask:
             ]
             return jsonify({"page": page, "limit": limit, "total": total, "items": data})
         except Exception as e:
-            print(f"Error in api_offers: {e}")
-            traceback.print_exc()
+            logger.error(f"Error in api_offers: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({"error": str(e)}), 500
         finally:
             db.close()
@@ -481,8 +505,8 @@ def create_app() -> Flask:
                 return redirect(url_for("country_offers", country_name=country))
             return jsonify({"inserted": inserted})
         except Exception as e:
-            print(f"Error in api_scrape: {e}")
-            traceback.print_exc()
+            logger.error(f"Error in api_scrape: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({"error": str(e)}), 500
 
     @app.route("/offers-test")
@@ -503,6 +527,7 @@ def create_app() -> Flask:
                                  show_all_offers=True)
         except Exception as e:
             logger.error(f"Offers test error: {e}")
+            logger.error(traceback.format_exc())
             flash("Error loading offers", "error")
             return redirect(url_for('index'))
         finally:
@@ -539,6 +564,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Database test error: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({"error": str(e)}), 500
         finally:
             db.close()
@@ -557,8 +583,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Scraping test error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             return jsonify({
                 "error": str(e),
                 "message": "Scraping failed. Check logs for details."
@@ -596,8 +621,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"ScraperAPI test error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             # Clean up
             if api_key:
                 os.environ.pop('SCRAPER_API_KEY', None)
@@ -625,8 +649,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Verbose scraping test error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             return jsonify({
                 "status": "error",
                 "error": str(e),
@@ -663,8 +686,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Proxy scraping test error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             # Clean up
             if proxy:
                 os.environ.pop('SCRAPER_PROXIES', None)
@@ -679,6 +701,12 @@ def create_app() -> Flask:
     def scheduler_test():
         """Test endpoint to check scheduler status"""
         try:
+            if scheduler is None:
+                return jsonify({
+                    "scheduler_status": "not_initialized",
+                    "message": "Scheduler is not initialized"
+                })
+            
             from scheduler import get_next_run_times
             next_runs = get_next_run_times(scheduler)
             
@@ -694,6 +722,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Scheduler test error: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({
                 "scheduler_status": "error",
                 "error": str(e),
@@ -719,6 +748,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Health check error: {e}")
+            logger.error(traceback.format_exc())
             return jsonify({
                 "status": "unhealthy",
                 "error": str(e),
@@ -742,9 +772,13 @@ def create_app() -> Flask:
             
             # Check scheduler
             try:
-                from scheduler import get_next_run_times
-                next_runs = get_next_run_times(scheduler)
-                scheduler_status = "Running"
+                if scheduler is None:
+                    scheduler_status = "Not initialized"
+                    next_runs = {}
+                else:
+                    from scheduler import get_next_run_times
+                    next_runs = get_next_run_times(scheduler)
+                    scheduler_status = "Running"
             except Exception as e:
                 next_runs = {}
                 scheduler_status = f"Error: {e}"
@@ -767,8 +801,7 @@ def create_app() -> Flask:
             })
         except Exception as e:
             logger.error(f"Debug info error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             return jsonify({
                 "error": str(e),
                 "message": "Failed to retrieve debug information"
@@ -782,7 +815,12 @@ def create_app() -> Flask:
 
 # This is required for Gunicorn to work properly
 if __name__ == "__main__":
-    app = create_app()
-    # Use the PORT environment variable for Render, default to 5000 for local development
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    try:
+        app = create_app()
+        # Use the PORT environment variable for Render, default to 5000 for local development
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False)
+    except Exception as e:
+        logger.error(f"Failed to start application: {e}")
+        logger.error(traceback.format_exc())
+        raise

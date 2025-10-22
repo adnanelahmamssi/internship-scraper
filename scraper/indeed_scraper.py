@@ -6,6 +6,7 @@ import re
 import sys
 import os
 import random
+import traceback
 
 import requests
 from bs4 import BeautifulSoup
@@ -312,6 +313,7 @@ def setup_driver():
         return driver
     except Exception as e:
         print(f"Error setting up Chrome driver: {e}")
+        traceback.print_exc()
         return None
 
 
@@ -336,66 +338,74 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
             url = build_indeed_url(start=start, country=country)
             print(f"Scraping page {page + 1}/{max_pages}: {url}")
             
-            driver.get(url)
-            time.sleep(delay_seconds)
-            
-            # Wait for job cards to load
             try:
-                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[data-jk], .job_seen_beacon, .resultContent")))
-            except:
-                print(f"No job cards found on page {page + 1}")
-                # Try to continue to next page instead of breaking
-                continue
-            
-            # Get page source and parse with BeautifulSoup
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-            
-            # Try multiple selectors for job cards
-            cards = soup.select("div.job_seen_beacon")
-            if not cards:
-                cards = soup.select(".resultContent")
-            if not cards:
-                cards = soup.select(".jobsearch-SerpJobCard")
-            if not cards:
-                cards = soup.select("[data-jk]")
-            if not cards:
-                cards = soup.select("div[data-testid='job-card']")
+                driver.get(url)
+                time.sleep(delay_seconds)
                 
-            print(f"Found {len(cards)} job cards on page {page + 1}")
+                # Wait for job cards to load
+                try:
+                    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[data-jk], .job_seen_beacon, .resultContent")))
+                except:
+                    print(f"No job cards found on page {page + 1}")
+                    # Try to continue to next page instead of breaking
+                    continue
+                
+                # Get page source and parse with BeautifulSoup
+                soup = BeautifulSoup(driver.page_source, "html.parser")
+                
+                # Try multiple selectors for job cards
+                cards = soup.select("div.job_seen_beacon")
+                if not cards:
+                    cards = soup.select(".resultContent")
+                if not cards:
+                    cards = soup.select(".jobsearch-SerpJobCard")
+                if not cards:
+                    cards = soup.select("[data-jk]")
+                if not cards:
+                    cards = soup.select("div[data-testid='job-card']")
+                    
+                print(f"Found {len(cards)} job cards on page {page + 1}")
 
-            page_offers = 0
-            for card in cards:
-                data = parse_job_card(card)
-                if data.get("link") and data.get("title"):
-                    offers.append(data)
-                    page_offers += 1
-                    print(f"Added: {data['title'][:50]}...")
+                page_offers = 0
+                for card in cards:
+                    data = parse_job_card(card)
+                    if data.get("link") and data.get("title"):
+                        offers.append(data)
+                        page_offers += 1
+                        print(f"Added: {data['title'][:50]}...")
 
-            print(f"Page {page + 1}: {page_offers} offers added")
-            
-            # If no offers found on this page, try a few more pages before stopping
-            if page_offers == 0 and page > 5:
-                print(f"No offers found on page {page + 1}, trying 3 more pages...")
-                empty_pages = 0
-                for extra_page in range(page + 1, min(page + 4, max_pages)):
-                    start = extra_page * 10
-                    url = build_indeed_url(start=start, country=country)
-                    driver.get(url)
-                    time.sleep(delay_seconds)
-                    soup = BeautifulSoup(driver.page_source, "html.parser")
-                    cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
-                    if not cards:
-                        empty_pages += 1
-                        if empty_pages >= 2:
-                            print("Too many empty pages, stopping...")
-                            break
-                break
+                print(f"Page {page + 1}: {page_offers} offers added")
+                
+                # If no offers found on this page, try a few more pages before stopping
+                if page_offers == 0 and page > 5:
+                    print(f"No offers found on page {page + 1}, trying 3 more pages...")
+                    empty_pages = 0
+                    for extra_page in range(page + 1, min(page + 4, max_pages)):
+                        start = extra_page * 10
+                        url = build_indeed_url(start=start, country=country)
+                        try:
+                            driver.get(url)
+                            time.sleep(delay_seconds)
+                            soup = BeautifulSoup(driver.page_source, "html.parser")
+                            cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
+                            if not cards:
+                                empty_pages += 1
+                                if empty_pages >= 2:
+                                    print("Too many empty pages, stopping...")
+                                    break
+                        except Exception as e:
+                            print(f"Error on extra page {extra_page}: {e}")
+                            continue
+                    break
 
-            time.sleep(delay_seconds)
-            
+                time.sleep(delay_seconds)
+            except Exception as e:
+                print(f"Error scraping page {page + 1}: {e}")
+                traceback.print_exc()
+                continue
+                
     except Exception as e:
         print(f"Error during scraping: {e}")
-        import traceback
         traceback.print_exc()
     finally:
         if driver:
@@ -428,13 +438,14 @@ def scrape_indeed(max_pages: int = 1, delay_seconds: float = 5.0, country: str =
         try:
             print(f"Trying strategy: {strategy_name}")
             offers = strategy_func()
-            if offers and len(offers) > 0:
+            if offers is not None and len(offers) > 0:
                 print(f"Success with {strategy_name}: {len(offers)} offers found")
                 return offers
             else:
                 print(f"Strategy {strategy_name} returned no offers")
         except Exception as e:
             print(f"Strategy {strategy_name} failed: {e}")
+            traceback.print_exc()
             continue
     
     # If all strategies failed, provide guidance
@@ -481,13 +492,14 @@ def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 5.0, count
         try:
             print(f"Trying strategy: {strategy_func.__name__}")
             result = strategy_func(max_pages, delay_seconds, country)
-            if result and len(result) > 0:
+            if result is not None and len(result) > 0:
                 print(f"Success with {strategy_func.__name__}: {len(result)} offers found")
                 return result
             else:
                 print(f"Strategy {strategy_func.__name__} returned no offers")
         except Exception as e:
             print(f"Strategy {strategy_func.__name__} failed: {e}")
+            traceback.print_exc()
             continue
     
     return []
@@ -546,6 +558,7 @@ def scrape_with_scraperapi(max_pages: int, delay_seconds: float, country: str) -
                 
         except Exception as e:
             print(f"ScraperAPI error: {e}")
+            traceback.print_exc()
             continue
     
     return offers
@@ -630,10 +643,10 @@ def scrape_with_direct_requests(max_pages: int, delay_seconds: float, country: s
                 
         except requests.exceptions.RequestException as e:
             print(f"Direct request error: {e}")
+            traceback.print_exc()
             continue
         except Exception as e:
             print(f"Unexpected error: {e}")
-            import traceback
             traceback.print_exc()
             continue
     
@@ -647,7 +660,11 @@ if __name__ == "__main__":
         if os.environ.get(key):
             print(f"  {key}: {os.environ.get(key)}")
     
-    offers = scrape_indeed(max_pages=1, country="Maroc")
-    print(f"Found {len(offers)} offers")
-    for i, offer in enumerate(offers[:3]):  # Show first 3 offers
-        print(f"{i+1}. {offer['title']} at {offer['company']} in {offer['location']}")
+    try:
+        offers = scrape_indeed(max_pages=1, country="Maroc")
+        print(f"Found {len(offers)} offers")
+        for i, offer in enumerate(offers[:3]):  # Show first 3 offers
+            print(f"{i+1}. {offer['title']} at {offer['company']} in {offer['location']}")
+    except Exception as e:
+        print(f"Error during test: {e}")
+        traceback.print_exc()

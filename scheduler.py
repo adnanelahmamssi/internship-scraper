@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 import logging
 import time
 import os
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,10 +41,20 @@ def insert_new_offers(offers):
             except IntegrityError:
                 db.rollback()
                 # Duplicate link; skip
+            except Exception as e:
+                logger.error(f"Error inserting offer: {e}")
+                db.rollback()
         logger.info(f"Inserted {inserted} new offers into the database")
         return inserted
+    except Exception as e:
+        logger.error(f"Error in insert_new_offers: {e}")
+        logger.error(traceback.format_exc())
+        return 0
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as e:
+            logger.error(f"Error closing database session: {e}")
 
 
 def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
@@ -55,6 +66,9 @@ def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
     start_time = time.time()
     logger.info(f"Starting scraping job for {country} with max_pages={max_pages}")
     
+    offers_found = 0
+    inserted = 0
+    
     try:
         # Scrape the offers
         offers = scrape_indeed(max_pages=max_pages, country=country)
@@ -64,6 +78,7 @@ def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
         inserted = insert_new_offers(offers)
     except Exception as e:
         logger.error(f"Scraping failed for {country}: {e}")
+        logger.error(traceback.format_exc())
         offers_found = 0
         inserted = 0
         # Continue to record stats even if scraping failed
@@ -86,9 +101,13 @@ def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
         logger.info(f"Scraping stats recorded for {country}: {offers_found} found, {inserted} inserted in {duration} seconds")
     except Exception as e:
         logger.error(f"Failed to record scraping stats for {country}: {e}")
+        logger.error(traceback.format_exc())
         db.rollback()
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as e:
+            logger.error(f"Error closing database session: {e}")
     
     logger.info(f"Scraping completed for {country}. Found {offers_found} offers, inserted {inserted}")
     return inserted
@@ -106,9 +125,12 @@ def get_next_run_times(scheduler):
     ]
     
     for job_id in job_ids:
-        job = scheduler.get_job(job_id)
-        if job:
-            next_runs[job_id] = job.next_run_time
+        try:
+            job = scheduler.get_job(job_id)
+            if job:
+                next_runs[job_id] = job.next_run_time
+        except Exception as e:
+            logger.error(f"Error getting job {job_id}: {e}")
     
     return next_runs
 
@@ -121,7 +143,7 @@ def create_scheduler() -> BackgroundScheduler:
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Maroc"),
         trigger="interval",
-        hours=1,
+        minutes=15,
         id="indeed_scrape_job_maroc",
         replace_existing=True,
         max_instances=1,
@@ -132,7 +154,7 @@ def create_scheduler() -> BackgroundScheduler:
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="France"),
         trigger="interval",
-        hours=1,
+        minutes=15,
         id="indeed_scrape_job_france",
         replace_existing=True,
         max_instances=1,
@@ -143,7 +165,7 @@ def create_scheduler() -> BackgroundScheduler:
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Canada"),
         trigger="interval",
-        hours=1,
+        minutes=15,
         id="indeed_scrape_job_canada",
         replace_existing=True,
         max_instances=1,
@@ -154,7 +176,7 @@ def create_scheduler() -> BackgroundScheduler:
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Belgique"),
         trigger="interval",
-        hours=1,
+        minutes=15,
         id="indeed_scrape_job_belgique",
         replace_existing=True,
         max_instances=1,
@@ -165,12 +187,12 @@ def create_scheduler() -> BackgroundScheduler:
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Suisse"),
         trigger="interval",
-        hours=1,
+        minutes=15,
         id="indeed_scrape_job_suisse",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    logger.info("Scheduler created with 5 jobs (1 hour interval)")
+    logger.info("Scheduler created with 5 jobs (15 minutes interval)")
     return scheduler

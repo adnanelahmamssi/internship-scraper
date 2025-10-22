@@ -8,16 +8,21 @@
 - **SQLAlchemy** - Object Relational Mapper (ORM) for database operations
 
 ## Web Scraping
-- **Selenium** - Browser automation for scraping dynamic content
+- **Requests** - HTTP library for making web requests (primary scraping method)
 - **BeautifulSoup4** - HTML parsing library
-- **Requests** - HTTP library for making web requests
-- **webdriver-manager** - Manager for ChromeDriver
+- **Selenium** - Browser automation (deprecated, replaced by Requests for cloud deployment)
+- **ScraperAPI** - Cloud-based scraping service for bypassing anti-bot measures
+- **webdriver-manager** - Manager for ChromeDriver (deprecated)
 
 ## Frontend
 - **Jinja2** - Template engine for rendering HTML templates
 - **HTML/CSS** - Basic frontend markup and styling
 - **WTForms** - Form handling and validation
 - **Flask-WTF** - Integration of WTForms with Flask
+
+## Deployment & Cloud Services
+- **Render** - Cloud platform for deployment
+- **Gunicorn** - WSGI HTTP Server for production deployment
 
 ## Task Scheduling
 - **APScheduler** - Advanced Python Scheduler for running periodic scraping tasks
