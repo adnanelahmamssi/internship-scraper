@@ -117,60 +117,60 @@ def create_scheduler() -> BackgroundScheduler:
     logger.info("Creating scheduler...")
     scheduler = BackgroundScheduler()
     
-    # Every 3 minutes for Morocco
+    # Every 1 hour for Morocco
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Maroc"),
         trigger="interval",
-        minutes=3,
+        hours=1,
         id="indeed_scrape_job_maroc",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    # Every 3 minutes for France
+    # Every 1 hour for France
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="France"),
         trigger="interval",
-        minutes=3,
+        hours=1,
         id="indeed_scrape_job_france",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    # Every 3 minutes for Canada
+    # Every 1 hour for Canada
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Canada"),
         trigger="interval",
-        minutes=3,
+        hours=1,
         id="indeed_scrape_job_canada",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    # Every 3 minutes for Belgium
+    # Every 1 hour for Belgium
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Belgique"),
         trigger="interval",
-        minutes=3,
+        hours=1,
         id="indeed_scrape_job_belgique",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    # Every 3 minutes for Switzerland
+    # Every 1 hour for Switzerland
     scheduler.add_job(
         func=lambda: run_scrape_job(max_pages=1, country="Suisse"),
         trigger="interval",
-        minutes=3,
+        hours=1,
         id="indeed_scrape_job_suisse",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
     )
     
-    logger.info("Scheduler created with 5 jobs")
+    logger.info("Scheduler created with 5 jobs (1 hour interval)")
     return scheduler

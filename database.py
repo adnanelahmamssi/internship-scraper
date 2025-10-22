@@ -4,7 +4,14 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 
 # Use absolute path for database to ensure it works in all environments
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "internships.db")
+# Check if we're in Render environment
+if os.environ.get('RENDER'):
+    # In Render, use the current working directory
+    DATABASE_PATH = os.path.join(os.getcwd(), "internships.db")
+else:
+    # Local development
+    DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "internships.db")
+
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
 
 print(f"Database URL: {DATABASE_URL}")

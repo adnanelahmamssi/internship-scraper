@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    # Use environment variable for secret key in production, fallback for development
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
@@ -520,8 +521,9 @@ def create_app() -> Flask:
             # Process offers to handle None values properly
             processed_offers = []
             for o in recent_offers:
-                title = str(o.title) if o.title else ""
-                company = str(o.company) if o.company else ""
+                # Access the actual values from the ORM objects
+                title = str(o.title) if o.title is not None else ""
+                company = str(o.company) if o.company is not None else ""
                 created_at = o.created_at.isoformat() if o.created_at is not None else None
                 
                 processed_offers.append({
