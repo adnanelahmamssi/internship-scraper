@@ -14,44 +14,41 @@ from forms import LoginForm, RegistrationForm
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
-    
-    # Debug information
-    print("=" * 50)
-    print("DEBUG INFORMATION")
-    print("=" * 50)
-    print("Current working directory:", os.getcwd())
-    print("Files in current directory:", os.listdir("."))
-    
-    # Check for templates directory in various locations
-    template_locations = [
+    # Try to find the templates directory
+    template_dir = None
+    possible_paths = [
         os.path.join(os.getcwd(), 'templates'),
-        os.path.join(os.path.dirname(__file__), 'templates'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'),
         '/opt/render/project/src/templates',
         './templates'
     ]
     
-    template_dir = None
-    for location in template_locations:
-        print(f"Checking for templates at: {location}")
-        if os.path.exists(location):
-            print(f"  FOUND: {location}")
-            template_dir = location
-            print(f"  Files in templates directory: {os.listdir(location)}")
+    for path in possible_paths:
+        if os.path.exists(path):
+            template_dir = path
             break
-        else:
-            print(f"  NOT FOUND: {location}")
     
+    # Debug information
+    print("Template directory found:", template_dir)
     if template_dir:
-        print(f"Using template directory: {template_dir}")
-        # Try to create app with explicit template folder
-        app = Flask(__name__, template_folder=template_dir, static_folder=os.path.join(os.path.dirname(template_dir), 'static'))
+        print("Files in template directory:", os.listdir(template_dir))
     else:
-        print("No template directory found, using default Flask configuration")
+        print("Template directory not found!")
+        print("Current working directory:", os.getcwd())
+        print("Files in current directory:", os.listdir("."))
+        if os.path.exists("templates"):
+            print("Templates directory exists in current directory")
+            print("Files in templates directory:", os.listdir("templates"))
+        else:
+            print("Templates directory does not exist in current directory")
     
-    print("=" * 50)
+    # Create Flask app with explicit template folder if found
+    if template_dir:
+        app = Flask(__name__, template_folder=template_dir)
+    else:
+        app = Flask(__name__)
     
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
     scheduler = create_scheduler()
