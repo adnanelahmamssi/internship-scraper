@@ -256,6 +256,11 @@ def parse_job_card(card) -> Dict[str, str]:
 
 def setup_driver():
     """Setup Chrome driver with anti-detection options"""
+    # Don't try to set up Chrome driver in cloud environments
+    if os.environ.get('RENDER'):
+        print("Skipping Chrome driver setup in cloud environment")
+        return None
+        
     try:
         options = Options()
         options.add_argument("--headless")  # Run in background
@@ -395,26 +400,26 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
     return offers
 
 
-def scrape_indeed(max_pages: int = 50, delay_seconds: float = 1.5, country: str = "Maroc") -> List[Dict[str, str]]:
+def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Main scraping function - tries Selenium first, falls back to requests
+    Main scraping function - uses requests as primary method for better cloud compatibility
     """
-    print(f"Trying Selenium scraping for {country}...")
-    offers = scrape_indeed_selenium(max_pages, delay_seconds, country)
+    print(f"Trying requests scraping for {country}...")
+    offers = scrape_indeed_requests(max_pages, delay_seconds, country)
     
-    if not offers:
-        print("Selenium failed, trying requests method...")
-        offers = scrape_indeed_requests(max_pages, delay_seconds, country)
+    # Only try Selenium if requests failed and we're not in a cloud environment
+    if not offers and not os.environ.get('RENDER'):
+        print("Requests failed, trying Selenium method...")
+        offers = scrape_indeed_selenium(max_pages, delay_seconds, country)
         
-        # If requests also failed, provide guidance
+        # If both methods failed, provide guidance
         if not offers:
             print("\n" + "="*50)
             print("SCRAPING FAILED - RECOMMENDATIONS:")
-            print("1. Install Google Chrome browser if not already installed")
-            print("2. Reduce the number of pages to scrape (max_pages=5)")
-            print("3. Increase delay between requests (delay_seconds=3.0)")
-            print("4. Consider using a proxy service")
-            print("5. Try scraping at a different time of day")
+            print("1. Reduce the number of pages to scrape (max_pages=1)")
+            print("2. Increase delay between requests (delay_seconds=3.0)")
+            print("3. Consider using a proxy service")
+            print("4. Try scraping at a different time of day")
             print("="*50)
     
     return offers

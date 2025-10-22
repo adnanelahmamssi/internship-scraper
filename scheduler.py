@@ -47,6 +47,11 @@ def insert_new_offers(offers):
 
 
 def run_scrape_job(max_pages: int = 1, country: str = "Maroc") -> int:
+    # Reduce pages in cloud environments
+    if os.environ.get('RENDER'):
+        max_pages = min(max_pages, 1)  # Maximum 1 page in cloud environments
+        print(f"Cloud environment detected, limiting to {max_pages} pages")
+    
     start_time = time.time()
     logger.info(f"Starting scraping job for {country} with max_pages={max_pages}")
     

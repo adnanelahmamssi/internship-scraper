@@ -473,7 +473,8 @@ def create_app() -> Flask:
         try:
             # Get country parameter from form or default to Morocco
             country = request.form.get("country", "Maroc")
-            inserted = run_scrape_job(max_pages=1, country=country)  # Also limit manual scraping to 1 page
+            # Use only 1 page for manual scraping to be gentle on the server
+            inserted = run_scrape_job(max_pages=1, country=country)
             if request.accept_mimetypes.accept_html and not request.is_json:
                 # Redirect back to country-specific page in HTML contexts
                 return redirect(url_for("country_offers", country_name=country))
