@@ -514,20 +514,26 @@ def create_app() -> Flask:
         try:
             # Count offers
             offer_count = db.query(Offer).count()
-            # Get recent offers
-            recent_offers = db.query(Offer).order_by(Offer.created_at.desc()).limit(5).all()
+            # Get recent offers (increase limit to see more)
+            recent_offers = db.query(Offer).order_by(Offer.created_at.desc()).limit(10).all()
+            
+            # Process offers to handle None values properly
+            processed_offers = []
+            for o in recent_offers:
+                title = str(o.title) if o.title else ""
+                company = str(o.company) if o.company else ""
+                created_at = o.created_at.isoformat() if o.created_at is not None else None
+                
+                processed_offers.append({
+                    "id": o.id,
+                    "title": title[:50] + "..." if len(title) > 50 else title,
+                    "company": company,
+                    "created_at": created_at
+                })
             
             return jsonify({
                 "offer_count": offer_count,
-                "recent_offers": [
-                    {
-                        "id": o.id,
-                        "title": o.title,
-                        "company": o.company,
-                        "created_at": o.created_at.isoformat() if o.created_at is not None else None
-                    }
-                    for o in recent_offers
-                ]
+                "recent_offers": processed_offers
             })
         except Exception as e:
             logger.error(f"Database test error: {e}")
