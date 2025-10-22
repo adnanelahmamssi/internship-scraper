@@ -5,7 +5,6 @@ from sqlalchemy import func
 import traceback
 import secrets
 import os
-from jinja2 import FileSystemLoader
 
 from database import init_db, get_db_session
 from models import Offer, User, ScrapingStat
@@ -15,34 +14,7 @@ from forms import LoginForm, RegistrationForm
 
 
 def create_app() -> Flask:
-    # Try to find the templates directory
-    template_dir = None
-    possible_paths = [
-        os.path.join(os.getcwd(), 'templates'),
-        os.path.join(os.path.dirname(__file__), 'templates'),
-        '/opt/render/project/src/templates',
-        './templates'
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            template_dir = path
-            break
-    
-    print("Current working directory:", os.getcwd())
-    print("Template directory found:", template_dir)
-    if template_dir:
-        print("Files in template directory:", os.listdir(template_dir))
-    else:
-        print("Template directory not found!")
-        print("Files in current directory:", os.listdir("."))
-    
-    # Create Flask app with explicit template folder if found
-    if template_dir:
-        app = Flask(__name__, template_folder=template_dir)
-    else:
-        app = Flask(__name__)
-    
+    app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(16))
     init_db()
 
@@ -54,77 +26,85 @@ def create_app() -> Flask:
         from functools import wraps
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if 'user_id' not in session:
-                return redirect(url_for('login'))
+            # Temporarily disable login requirement for testing
+            # if 'user_id' not in session:
+            #     return redirect(url_for('login'))
             return f(*args, **kwargs)
         return decorated_function
 
     @app.route("/login", methods=['GET', 'POST'])
     def login():
         # If user is already logged in, redirect to country selector
-        if 'user_id' in session:
-            return redirect(url_for('index'))
+        # if 'user_id' in session:
+        #     return redirect(url_for('index'))
             
-        form = LoginForm()
-        if form.validate_on_submit():
-            db = get_db_session()
-            try:
-                user = db.query(User).filter(User.email == form.email.data).first()
-                if user and user.check_password(form.password.data):
-                    session['user_id'] = user.id
-                    session['user_email'] = user.email
-                    # Mark that user has visited the country selector
-                    session['visited_country_selector'] = True
-                    return redirect(url_for('index'))
-                else:
-                    flash('Email ou mot de passe invalide.', 'error')
-            finally:
-                db.close()
+        # form = LoginForm()
+        # if form.validate_on_submit():
+        #     db = get_db_session()
+        #     try:
+        #         user = db.query(User).filter(User.email == form.email.data).first()
+        #         if user and user.check_password(form.password.data):
+        #             session['user_id'] = user.id
+        #             session['user_email'] = user.email
+        #             # Mark that user has visited the country selector
+        #             session['visited_country_selector'] = True
+        #             return redirect(url_for('index'))
+        #         else:
+        #             flash('Email ou mot de passe invalide.', 'error')
+        #     finally:
+        #         db.close()
         
-        return render_template('login.html', form=form)
+        # For testing, automatically set a session and redirect to index
+        session['user_id'] = 1
+        session['user_email'] = 'test@example.com'
+        session['visited_country_selector'] = True
+        return redirect(url_for('index'))
+        # return render_template('login.html', form=form)
 
     @app.route("/register", methods=['GET', 'POST'])
     def register():
-        # If user is already logged in, redirect to country selector
-        if 'user_id' in session:
-            return redirect(url_for('index'))
-            
-        form = RegistrationForm()
-        if form.validate_on_submit():
-            print("Form validated successfully")
-            db = get_db_session()
-            try:
-                # Check if user already exists
-                existing_user = db.query(User).filter(User.email == form.email.data).first()
-                if existing_user:
-                    flash('Cette adresse email est déjà enregistrée.', 'error')
-                    print("Email already exists")
-                else:
-                    user = User(
-                        email=form.email.data,
-                        first_name=form.first_name.data,
-                        last_name=form.last_name.data
-                    )
-                    user.set_password(form.password.data)
-                    db.add(user)
-                    db.commit()
-                    flash('Inscription réussie. Veuillez vous connecter.', 'success')
-                    print("User registered successfully")
-                    return redirect(url_for('login'))
-            except Exception as e:
-                db.rollback()
-                flash('Échec de l\'inscription. Veuillez réessayer.', 'error')
-                print(f"Registration error: {e}")
-            finally:
-                db.close()
-        else:
-            # Print form errors for debugging
-            if form.errors:
-                print("Form errors:", form.errors)
-            else:
-                print("Form not validated but no errors shown")
-        
-        return render_template('register.html', form=form)
+        # Temporarily redirect to index for testing
+        return redirect(url_for('index'))
+        # # If user is already logged in, redirect to country selector
+        # if 'user_id' in session:
+        #     return redirect(url_for('index'))
+        #     
+        # form = RegistrationForm()
+        # if form.validate_on_submit():
+        #     print("Form validated successfully")
+        #     db = get_db_session()
+        #     try:
+        #         # Check if user already exists
+        #         existing_user = db.query(User).filter(User.email == form.email.data).first()
+        #         if existing_user:
+        #             flash('Cette adresse email est déjà enregistrée.', 'error')
+        #             print("Email already exists")
+        #         else:
+        #             user = User(
+        #                 email=form.email.data,
+        #                 first_name=form.first_name.data,
+        #                 last_name=form.last_name.data
+        #             )
+        #             user.set_password(form.password.data)
+        #             db.add(user)
+        #             db.commit()
+        #             flash('Inscription réussie. Veuillez vous connecter.', 'success')
+        #             print("User registered successfully")
+        #             return redirect(url_for('login'))
+        #     except Exception as e:
+        #         db.rollback()
+        #         flash('Échec de l\'inscription. Veuillez réessayer.', 'error')
+        #         print(f"Registration error: {e}")
+        #     finally:
+        #         db.close()
+        # else:
+        #     # Print form errors for debugging
+        #     if form.errors:
+        #         print("Form errors:", form.errors)
+        #     else:
+        #         print("Form not validated but no errors shown")
+        # 
+        # return render_template('register.html', form=form)
 
     @app.route("/logout")
     def logout():
@@ -504,6 +484,7 @@ def create_app() -> Flask:
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
 
+    # Make sure we return the app
     return app
 
 
