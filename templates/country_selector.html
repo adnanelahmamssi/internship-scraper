@@ -14,10 +14,6 @@
   <nav class="navbar">
     <div class="nav-container">
       <a href="{{ url_for('index') }}" class="nav-brand">Internship Tracker</a>
-      <div class="nav-links">
-        <a href="{{ url_for('stats') }}" class="nav-link">Statistiques</a>
-        <a href="{{ url_for('logout') }}" class="nav-link">Déconnexion</a>
-      </div>
     </div>
   </nav>
 
@@ -39,7 +35,7 @@
       Chargement...
     </div>
     <div class="timer-info">
-      Les offres sont mises à jour automatiquement toutes les 3 minutes
+      Les offres sont mises à jour automatiquement toutes les heures
     </div>
   </div>
 
@@ -92,8 +88,12 @@
               document.getElementById('nextUpdateTime').textContent =
                 `${diffSecs} seconde${diffSecs > 1 ? 's' : ''}`;
             } else {
-              document.getElementById('nextUpdateTime').textContent =
-                "En cours...";
+              // When time is up, show a message and then refresh after a short delay
+              document.getElementById('nextUpdateTime').textContent = "Mise à jour en cours...";
+              // Refresh the page after 5 seconds to show new offers
+              setTimeout(() => {
+                location.reload();
+              }, 5000);
             }
           } else {
             document.getElementById('nextUpdateTime').textContent = "Indisponible";
