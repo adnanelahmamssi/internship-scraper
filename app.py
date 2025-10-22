@@ -582,6 +582,47 @@ def create_app() -> Flask:
                 "message": "Scraping failed. Check logs for details."
             }), 500
 
+    @app.route("/test-scrape-with-proxy")
+    @login_required
+    def test_scrape_with_proxy():
+        """Test route to manually trigger scraping with proxy support"""
+        proxy = request.args.get('proxy', '')
+        try:
+            # Get proxy from environment variable for testing
+            if proxy:
+                # Temporarily set the proxy environment variable
+                os.environ['SCRAPER_PROXIES'] = proxy
+                print(f"Testing with proxy: {proxy}")
+            
+            # Import here to avoid circular imports
+            from scheduler import run_scrape_job
+            
+            # Use verbose settings for testing
+            inserted = run_scrape_job(max_pages=1, country="Maroc")
+            
+            # Clean up
+            if proxy:
+                os.environ.pop('SCRAPER_PROXIES', None)
+            
+            return jsonify({
+                "status": "success",
+                "inserted": inserted,
+                "message": f"Scraping completed with proxy. Inserted {inserted} offers.",
+                "proxy_used": proxy if proxy else "None"
+            })
+        except Exception as e:
+            logger.error(f"Proxy scraping test error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Clean up
+            if proxy:
+                os.environ.pop('SCRAPER_PROXIES', None)
+            return jsonify({
+                "status": "error",
+                "error": str(e),
+                "message": "Scraping failed. Check logs for details."
+            }), 500
+
     @app.route("/scheduler-test")
     @login_required
     def scheduler_test():

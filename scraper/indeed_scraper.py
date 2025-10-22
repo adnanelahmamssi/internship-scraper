@@ -408,241 +408,193 @@ def scrape_indeed_selenium(max_pages: int = 50, delay_seconds: float = 1.5, coun
     return offers
 
 
-def scrape_indeed(max_pages: int = 1, delay_seconds: float = 1.0, country: str = "Maroc") -> List[Dict[str, str]]:
+def scrape_indeed(max_pages: int = 1, delay_seconds: float = 5.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Main scraping function - enhanced for cloud environments
+    Main scraping function - enhanced for cloud environments with multiple strategies
     """
     print(f"Trying requests scraping for {country}...")
     
-    # In cloud environments, try requests first with enhanced settings
-    if os.environ.get('RENDER'):
-        print("Cloud environment detected, using enhanced requests approach")
-        # Try with more conservative settings for cloud
-        offers = scrape_indeed_requests(max_pages=1, delay_seconds=5.0, country=country)
-        
-        # If that fails, we can implement proxy support or other solutions later
-        # For now, return what we got (even if it's 0 offers)
-        return offers
-    else:
-        # For local development, try the full approach
-        offers = scrape_indeed_requests(max_pages, delay_seconds, country)
-        
-        # Only try Selenium if requests failed and we're not in a cloud environment
-        if not offers and not os.environ.get('RENDER'):
-            print("Requests failed, trying Selenium method...")
-            offers = scrape_indeed_selenium(max_pages, delay_seconds, country)
-            
-            # If both methods failed, provide guidance
-            if not offers:
-                print("\n" + "="*50)
-                print("SCRAPING FAILED - RECOMMENDATIONS:")
-                print("1. Reduce the number of pages to scrape (max_pages=1)")
-                print("2. Increase delay between requests (delay_seconds=3.0)")
-                print("3. Consider using a proxy service")
-                print("4. Try scraping at a different time of day")
-                print("="*50)
-        
-        return offers
+    # Try multiple strategies
+    strategies = [
+        ("enhanced_requests", lambda: scrape_indeed_requests(max_pages, delay_seconds, country)),
+    ]
+    
+    # Only try Selenium if not in cloud environment
+    if not os.environ.get('RENDER'):
+        strategies.append(("selenium", lambda: scrape_indeed_selenium(max_pages, delay_seconds, country)))
+    
+    for strategy_name, strategy_func in strategies:
+        try:
+            print(f"Trying strategy: {strategy_name}")
+            offers = strategy_func()
+            if offers:
+                print(f"Success with {strategy_name}: {len(offers)} offers found")
+                return offers
+            else:
+                print(f"Strategy {strategy_name} returned no offers")
+        except Exception as e:
+            print(f"Strategy {strategy_name} failed: {e}")
+            continue
+    
+    # If all strategies failed, provide guidance
+    print("\n" + "="*50)
+    print("ALL SCRAPING STRATEGIES FAILED")
+    print("RECOMMENDATIONS:")
+    print("1. Set SCRAPER_PROXIES environment variable with working proxies")
+    print("2. Try scraping at a different time of day")
+    print("3. Reduce frequency (increase delay between scrapes)")
+    print("4. Check if Indeed has changed their HTML structure")
+    print("="*50)
+    
+    return []
 
+
+# Free proxy list - in a real application, you'd use a paid proxy service
+FREE_PROXIES = [
+    # These are example proxies - you would replace with real ones
+    # Format: "ip:port" or "username:password@ip:port"
+]
+
+def get_proxy_list():
+    """Get proxy list from environment variable or use free proxies"""
+    proxy_list = os.environ.get('SCRAPER_PROXIES', '')
+    if proxy_list:
+        return [p.strip() for p in proxy_list.split(',') if p.strip()]
+    return FREE_PROXIES
 
 def scrape_indeed_requests(max_pages: int = 1, delay_seconds: float = 5.0, country: str = "Maroc") -> List[Dict[str, str]]:
     """
-    Fallback scraping method using requests with enhanced anti-bot avoidance
+    Fallback scraping method using requests with proxy support
     """
     offers: List[Dict[str, str]] = []
-    session = requests.Session()
+    proxies = get_proxy_list()
     
-    # Use rotating user agents
+    print(f"Starting requests-based scraping for {country} with {max_pages} pages")
+    print(f"Available proxies: {len(proxies) if proxies else 'None'}")
+    
+    # If we have proxies, try them first
+    if proxies:
+        print("Trying with proxies...")
+        for proxy in proxies:
+            try:
+                print(f"Trying proxy: {proxy}")
+                session = requests.Session()
+                
+                # Set up proxy
+                proxy_dict = {
+                    "http": f"http://{proxy}",
+                    "https": f"http://{proxy}"
+                }
+                session.proxies.update(proxy_dict)
+                
+                # Use rotating user agents
+                headers = DEFAULT_HEADERS.copy()
+                headers["User-Agent"] = random.choice(USER_AGENTS)
+                session.headers.update(headers)
+                
+                # Try scraping with this proxy
+                result = _scrape_with_session(session, max_pages, delay_seconds, country)
+                if result:
+                    print(f"Success with proxy {proxy}!")
+                    return result
+                else:
+                    print(f"No results with proxy {proxy}")
+                    
+            except Exception as e:
+                print(f"Proxy {proxy} failed: {e}")
+                continue
+        
+        print("All proxies failed, trying without proxies...")
+    
+    # Fallback to direct requests (without proxies)
+    session = requests.Session()
     headers = DEFAULT_HEADERS.copy()
     headers["User-Agent"] = random.choice(USER_AGENTS)
     session.headers.update(headers)
     
-    print(f"Starting requests-based scraping for {country} with {max_pages} pages")
+    return _scrape_with_session(session, max_pages, delay_seconds, country)
 
+def _scrape_with_session(session, max_pages, delay_seconds, country):
+    """Helper function to scrape with a given session"""
+    offers: List[Dict[str, str]] = []
+    
     for page in range(max_pages):
         start = page * 10
         url = build_indeed_url(start=start, country=country)
         print(f"Scraping page {page + 1}: {url}")
         
-        # Initialize variables for retry loop
-        resp = None
-        attempt = 0
-        
         # Increase delay and add some randomness
-        delay = delay_seconds + random.uniform(2.0, 5.0) + (page * 1.0)
+        delay = delay_seconds + random.uniform(3.0, 7.0) + (page * 2.0)
         print(f"Waiting {delay:.2f} seconds before request...")
         time.sleep(delay)
         
-        # Try multiple times with exponential backoff
-        max_retries = 2  # Reduced for cloud environments
-        for attempt in range(max_retries):
-            try:
-                # Rotate user agent for each attempt
-                headers = DEFAULT_HEADERS.copy()
-                headers["User-Agent"] = random.choice(USER_AGENTS)
-                session.headers.update(headers)
-                
-                print(f"Attempt {attempt + 1}/{max_retries} for page {page + 1}")
-                resp = session.get(url, timeout=30, allow_redirects=True)
-                print(f"HTTP {resp.status_code} for {url}")
-                
-                # Check if we're being blocked by anti-bot protection
-                if resp.status_code in [403, 429]:
-                    print(f"Blocked by anti-bot protection (status {resp.status_code}).")
-                    if resp.status_code == 429:  # Rate limited
-                        if attempt < max_retries - 1:
-                            backoff_time = (2 ** attempt) * 15
-                            print(f"Rate limited. Retrying in {backoff_time} seconds...")
-                            time.sleep(backoff_time)
-                            continue
-                        else:
-                            print("Rate limited and max retries reached.")
-                            break
-                    else:  # 403 Forbidden
-                        if attempt < max_retries - 1:
-                            backoff_time = (2 ** attempt) * 20
-                            print(f"Blocked. Retrying in {backoff_time} seconds...")
-                            time.sleep(backoff_time)
-                            continue
-                        else:
-                            print("Blocked and max retries reached.")
-                            # Try a different approach for the next country
-                            break
-                
-                if resp.status_code != 200:
-                    print(f"Failed to fetch page {page + 1} (status {resp.status_code})")
-                    if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 5
-                        print(f"Retrying in {backoff_time} seconds...")
-                        time.sleep(backoff_time)
-                        continue
-                    else:
-                        break
-                        
-                # Check if we got a valid response
-                if len(resp.text) < 1000:  # Suspiciously short response
-                    print(f"Received suspiciously short response ({len(resp.text)} chars), might be blocked")
-                    if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 10
-                        print(f"Retrying in {backoff_time} seconds...")
-                        time.sleep(backoff_time)
-                        continue
-                    else:
-                        break
-                
-                # Parse the response
-                soup = BeautifulSoup(resp.text, "html.parser")
-                
-                # Check if we got a valid Indeed page
-                job_cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
-                if not job_cards:
-                    print("No job cards found in response, might be blocked or redirected")
-                    print(f"Response preview: {resp.text[:500]}...")
-                    if attempt < max_retries - 1:
-                        backoff_time = (2 ** attempt) * 10
-                        print(f"Retrying in {backoff_time} seconds...")
-                        time.sleep(backoff_time)
-                        continue
-                    else:
-                        break
-                
-                print(f"Successfully parsed page {page + 1} with {len(job_cards)} job cards")
-                break  # Success, break out of retry loop
-                
-            except requests.exceptions.RequestException as e:
-                print(f"Request error on attempt {attempt + 1}: {e}")
-                if attempt < max_retries - 1:
-                    backoff_time = (2 ** attempt) * 5
-                    print(f"Retrying in {backoff_time} seconds...")
-                    time.sleep(backoff_time)
-                    continue
-                else:
-                    print("Max retries reached due to request errors.")
-                    break
-            except Exception as e:
-                print(f"Unexpected error on attempt {attempt + 1}: {e}")
-                import traceback
-                traceback.print_exc()
-                if attempt < max_retries - 1:
-                    backoff_time = (2 ** attempt) * 5
-                    print(f"Retrying in {backoff_time} seconds...")
-                    time.sleep(backoff_time)
-                    continue
-                else:
-                    print("Max retries reached due to unexpected errors.")
-                    break
-        
-        # If we failed all retries, stop scraping
-        if attempt == max_retries - 1:
-            # Check if we have a response to evaluate
-            if resp is not None and (resp.status_code != 200 or len(resp.text) < 1000):
-                print("Failed to get valid response after all retries. Stopping scraping.")
-                break
-            elif resp is None:
-                print("Failed to get any response after all retries. Stopping scraping.")
-                break
+        try:
+            resp = session.get(url, timeout=30, allow_redirects=True)
+            print(f"HTTP {resp.status_code} for {url}")
             
-        # If we don't have a valid response, skip parsing
-        if resp is None or resp.status_code != 200:
-            print(f"Skipping page {page + 1} due to failed request")
+            # Check if we're being blocked
+            if resp.status_code in [403, 429]:
+                print(f"Blocked with status {resp.status_code}")
+                # Don't continue with this session
+                return []
+                
+            if resp.status_code != 200:
+                print(f"Failed with status {resp.status_code}")
+                continue
+                
+            # Check response validity
+            if len(resp.text) < 1000:
+                print(f"Suspiciously short response ({len(resp.text)} chars)")
+                continue
+            
+            # Parse the response
+            soup = BeautifulSoup(resp.text, "html.parser")
+            
+            # Check if we got a valid Indeed page
+            job_cards = soup.select("div.job_seen_beacon") or soup.select(".resultContent")
+            if not job_cards:
+                print("No job cards found in response")
+                # Print a snippet of the response to understand what we got
+                print(f"Response preview: {resp.text[:300]}...")
+                continue
+            
+            print(f"Successfully parsed page {page + 1} with {len(job_cards)} job cards")
+            
+            # Process the job cards
+            page_offers = 0
+            for card in job_cards:
+                data = parse_job_card(card)
+                if data.get("link") and data.get("title"):
+                    offers.append(data)
+                    page_offers += 1
+                    if page_offers <= 2:  # Only print first 2 offers
+                        print(f"Added: {data['title'][:50]}...")
+
+            print(f"Page {page + 1}: {page_offers} offers added")
+            
+            # If we got offers, we're successful
+            if page_offers > 0:
+                print(f"Successfully scraped {len(offers)} offers so far")
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
             continue
-            
-        # Parse the successful response
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Try multiple selectors for job cards
-        cards = soup.select("div.job_seen_beacon")
-        if not cards:
-            cards = soup.select(".resultContent")
-        if not cards:
-            cards = soup.select(".jobsearch-SerpJobCard")
-        if not cards:
-            cards = soup.select("[data-jk]")
-        if not cards:
-            cards = soup.select("div[data-testid='job-card']")
-            
-        print(f"Found {len(cards)} job cards on page {page + 1}")
-
-        page_offers = 0
-        for card in cards:
-            data = parse_job_card(card)
-            if data.get("link") and data.get("title"):
-                offers.append(data)
-                page_offers += 1
-                if page_offers <= 3:  # Only print first 3 offers
-                    print(f"Added: {data['title'][:50]}...")
-
-        print(f"Page {page + 1}: {page_offers} offers added")
-        
-        # If no offers found on this page, try a few more pages before stopping
-        if page_offers == 0 and page >= 1:
-            print(f"No offers found on page {page + 1}, stopping...")
-            break
-
-        # Add delay between pages
-        if page < max_pages - 1:
-            page_delay = delay_seconds + random.uniform(2.0, 5.0)
-            print(f"Waiting {page_delay:.2f} seconds before next page...")
-            time.sleep(page_delay)
-
-    print(f"Total offers scraped: {len(offers)}")
-    
-    # If we got no offers, provide guidance
-    if len(offers) == 0:
-        print("\n" + "="*50)
-        print("NO OFFERS FOUND - RECOMMENDATIONS:")
-        print("1. Indeed may be blocking requests from cloud IPs")
-        print("2. Consider using a proxy service")
-        print("3. Try scraping at a different time of day")
-        print("4. The website structure may have changed")
-        print("="*50)
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
     
     return offers
-
 
 if __name__ == "__main__":
     # Simple test function
     print("Testing Indeed scraper...")
+    print("Environment variables:")
+    for key in ['RENDER', 'SCRAPER_PROXIES']:
+        if os.environ.get(key):
+            print(f"  {key}: {os.environ.get(key)}")
+    
     offers = scrape_indeed(max_pages=1, country="Maroc")
     print(f"Found {len(offers)} offers")
     for i, offer in enumerate(offers[:3]):  # Show first 3 offers
