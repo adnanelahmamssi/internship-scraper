@@ -2,20 +2,39 @@ import os
 import sys
 
 # Debug information
+print("=" * 50)
+print("WSGI DEBUG INFORMATION")
+print("=" * 50)
+print("Python version:", sys.version)
 print("Python path:", sys.path)
 print("Current working directory:", os.getcwd())
 print("Files in current directory:", os.listdir("."))
+print("Environment variables:")
+for key, value in sorted(os.environ.items()):
+    if 'RENDER' in key or 'PATH' in key:
+        print(f"  {key}: {value}")
 
-# Add the project root to the Python path
-basedir = os.path.abspath(os.path.dirname(__file__))
-sys.path.insert(0, basedir)
-
-print("Base directory:", basedir)
-if os.path.exists(os.path.join(basedir, "templates")):
-    print("Templates directory found in base directory")
-    print("Files in templates directory:", os.listdir(os.path.join(basedir, "templates")))
+# Check for templates directory
+template_dir = os.path.join(os.getcwd(), 'templates')
+if os.path.exists(template_dir):
+    print(f"Templates directory found: {template_dir}")
+    print(f"Files in templates directory: {os.listdir(template_dir)}")
 else:
-    print("Templates directory NOT found in base directory")
+    print(f"Templates directory NOT found at: {template_dir}")
+    # Try alternative locations
+    alt_locations = [
+        '/opt/render/project/src/templates',
+        os.path.join(os.path.dirname(__file__), 'templates')
+    ]
+    for location in alt_locations:
+        if os.path.exists(location):
+            print(f"Templates found at alternative location: {location}")
+            print(f"Files: {os.listdir(location)}")
+            break
+    else:
+        print("Templates directory not found in any expected location")
+
+print("=" * 50)
 
 from app import create_app
 
